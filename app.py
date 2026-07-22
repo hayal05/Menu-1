@@ -1,5 +1,5 @@
 """
-Ebuka Coffee - ኢቡካ ቡና  |  Menu backend
+Saba Coffee - ሳባ ቡና  |  Menu backend
 --------------------------------------
 A small Flask app that serves the menu website and stores the menu
 (categories + items) in a local SQLite database. The admin panel in the
