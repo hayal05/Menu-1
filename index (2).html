@@ -1,0 +1,772 @@
+<!DOCTYPE html>
+<html lang="am">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1">
+<title>Ebuka Coffee - ኢቡካ ቡና | ምግብ ዝርዝር</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Noto+Serif+Ethiopic:wght@400;600;700;800&family=Noto+Sans+Ethiopic:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --orange:#E8672B;
+    --orange-dark:#C94E1B;
+    --orange-light:#F4914F;
+    --gold:#D9A441;
+    --coffee:#3D2015;
+    --coffee-soft:#5A3826;
+    --cream:#FFF8F0;
+    --plate:#FFFFFF;
+    --ink:#3D2015;
+    --muted:#9A7E6E;
+    --shadow: 0 2px 12px rgba(61,32,21,0.10);
+    --radius: 20px;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;}
+  body{
+    background:var(--cream);
+    color:var(--ink);
+    font-family:'Noto Sans Ethiopic','Noto Sans',sans-serif;
+    -webkit-font-smoothing:antialiased;
+    min-height:100vh;
+  }
+  .brand-font{font-family:'Noto Serif Ethiopic','Noto Sans Ethiopic',serif;}
+
+  /* ---------- background texture ---------- */
+  .bg-rings{
+    position:fixed; inset:0; z-index:0; pointer-events:none; overflow:hidden;
+  }
+  .bg-rings span{
+    position:absolute; border-radius:50%; border:2px solid rgba(232,103,43,0.06);
+  }
+
+  /* ---------- header ---------- */
+  header.top{
+    position:relative; z-index:2;
+    background:linear-gradient(160deg, var(--orange) 0%, var(--orange-dark) 55%, var(--coffee) 130%);
+    padding:26px 20px 22px;
+    border-radius:0 0 28px 28px;
+    box-shadow:0 6px 24px rgba(61,32,21,0.22);
+    overflow:hidden;
+  }
+  .header-inner{
+    position:relative; z-index:2;
+    display:flex; align-items:center; gap:14px; max-width:640px; margin:0 auto;
+  }
+  .jebena{ width:52px; height:52px; flex-shrink:0; opacity:0.95; }
+  .brand-text h1{
+    margin:0; color:#fff; font-size:22px; line-height:1.25; font-weight:700;
+    letter-spacing:0.2px;
+  }
+  .brand-text .sub-en{
+    display:block; font-family:'Noto Sans Ethiopic',sans-serif; font-size:11px; font-weight:500;
+    letter-spacing:2.5px; text-transform:uppercase; color:rgba(255,255,255,0.75); margin-top:2px;
+  }
+  .brand-text .tagline{
+    margin:6px 0 0; color:rgba(255,255,255,0.88); font-size:13px; font-weight:500;
+  }
+  .steam{
+    position:absolute; right:-10px; top:-20px; width:140px; height:140px; opacity:0.10;
+  }
+
+  /* ---------- category chips ---------- */
+  .cat-nav-wrap{ position: sticky; top:0; z-index:5; background:var(--cream); padding:14px 0 6px; }
+  .cat-nav{
+    display:flex; gap:10px; overflow-x:auto; padding:4px 20px 10px;
+    scrollbar-width:none; max-width:640px; margin:0 auto;
+  }
+  .cat-nav::-webkit-scrollbar{display:none;}
+  .cat-chip{
+    flex-shrink:0; padding:10px 18px; border-radius:999px; border:2px solid rgba(232,103,43,0.18);
+    background:#fff; color:var(--orange-dark); font-weight:600; font-size:14px; cursor:pointer;
+    white-space:nowrap; transition:all .18s ease; font-family:'Noto Sans Ethiopic',sans-serif;
+  }
+  .cat-chip:hover{ border-color: var(--orange); }
+  .cat-chip.active{
+    background:linear-gradient(135deg, var(--orange), var(--orange-dark));
+    color:#fff; border-color:transparent; box-shadow:0 6px 16px rgba(232,103,43,0.35);
+  }
+
+  /* ---------- main / grid ---------- */
+  main{ position:relative; z-index:1; max-width:640px; margin:0 auto; padding:8px 16px 60px; }
+  .cat-heading{
+    display:flex; align-items:baseline; gap:10px; margin:18px 4px 14px;
+  }
+  .cat-heading h2{ margin:0; font-size:19px; font-weight:700; }
+  .cat-heading .count{ font-size:12px; color:var(--muted); font-weight:500; }
+
+  .grid{ display:grid; grid-template-columns:1fr; gap:14px; }
+  @media(min-width:520px){ .grid{ grid-template-columns:1fr 1fr; } }
+
+  .item-card{
+    position:relative; background:var(--plate); border-radius:var(--radius);
+    padding:18px 16px 16px; box-shadow:var(--shadow);
+    display:flex; gap:12px; align-items:flex-start; overflow:hidden;
+    animation:riseIn .35s ease both;
+  }
+  .item-card::before{
+    content:""; position:absolute; top:0; left:0; right:0; height:5px;
+    background:linear-gradient(90deg, var(--gold), var(--orange) 45%, var(--gold));
+  }
+  .item-card::after{
+    content:""; position:absolute; inset:9px; border-radius:14px;
+    border:1px dashed rgba(232,103,43,0.14); pointer-events:none;
+  }
+  @keyframes riseIn{ from{opacity:0; transform:translateY(8px);} to{opacity:1; transform:translateY(0);} }
+
+  .item-icon{
+    width:46px; height:46px; border-radius:50%; flex-shrink:0;
+    background:radial-gradient(circle at 32% 28%, #FFF3E4, var(--cream));
+    box-shadow:inset 0 0 0 2px rgba(232,103,43,0.20);
+    display:flex; align-items:center; justify-content:center; font-size:22px;
+  }
+  .item-body{ flex:1; min-width:0; }
+  .item-top{ display:flex; justify-content:space-between; align-items:flex-start; gap:8px; }
+  .item-name{ font-weight:700; font-size:15.5px; line-height:1.3; }
+  .item-name-en{ display:block; font-size:11.5px; color:var(--muted); font-weight:500; margin-top:1px; }
+  .item-desc{ font-size:12.5px; color:var(--muted); margin-top:6px; line-height:1.5; }
+  .price-pill{
+    flex-shrink:0; background:linear-gradient(135deg, var(--orange), var(--orange-dark));
+    color:#fff; padding:6px 13px; border-radius:999px; font-weight:700; font-size:13px;
+    white-space:nowrap; box-shadow:0 3px 8px rgba(232,103,43,0.3);
+  }
+  .unavailable-badge{
+    display:inline-block; margin-top:8px; font-size:11px; font-weight:700; color:#B23A2B;
+    background:#FBE3DD; padding:3px 9px; border-radius:999px;
+  }
+  .item-card.is-unavailable{ opacity:0.55; }
+
+  .empty-state{
+    text-align:center; padding:50px 20px; color:var(--muted);
+  }
+  .empty-state .emoji{ font-size:38px; display:block; margin-bottom:10px; }
+
+  /* ---------- footer ---------- */
+  footer{
+    position:relative; z-index:1; background:var(--coffee); color:#fff;
+    text-align:center; padding:34px 20px 26px; margin-top:20px;
+    border-radius:28px 28px 0 0;
+  }
+  footer .foot-brand{ font-size:20px; font-weight:700; letter-spacing:0.5px; }
+  footer .foot-sub{ font-size:12px; color:rgba(255,255,255,0.55); margin-top:8px; letter-spacing:1px; }
+
+  /* ---------- admin trigger ---------- */
+  .admin-fab{
+    position:fixed; right:16px; bottom:16px; z-index:20;
+    width:46px; height:46px; border-radius:50%; border:none; cursor:pointer;
+    background:var(--coffee); color:#fff; box-shadow:0 6px 18px rgba(61,32,21,0.35);
+    display:flex; align-items:center; justify-content:center; font-size:19px;
+    transition:transform .15s ease;
+  }
+  .admin-fab:hover{ transform:scale(1.06); }
+
+  /* ---------- modal ---------- */
+  .modal-overlay{
+    position:fixed; inset:0; background:rgba(61,32,21,0.55); z-index:50;
+    display:flex; align-items:flex-end; justify-content:center;
+    animation:fadeIn .18s ease both;
+  }
+  @keyframes fadeIn{ from{opacity:0;} to{opacity:1;} }
+  @media(min-width:640px){ .modal-overlay{ align-items:center; } }
+
+  .modal{
+    background:var(--cream); width:100%; max-width:640px; max-height:92vh; overflow-y:auto;
+    border-radius:24px 24px 0 0; padding:0;
+    animation:slideUp .22s ease both;
+  }
+  @media(min-width:640px){ .modal{ border-radius:24px; max-height:85vh; } }
+  @keyframes slideUp{ from{transform:translateY(24px); opacity:0;} to{transform:translateY(0); opacity:1;} }
+
+  .modal-head{
+    position:sticky; top:0; background:var(--coffee); color:#fff; padding:18px 20px;
+    display:flex; align-items:center; justify-content:space-between; z-index:2;
+  }
+  .modal-head h3{ margin:0; font-size:17px; font-weight:700; }
+  .icon-btn{
+    background:rgba(255,255,255,0.14); border:none; color:#fff; width:32px; height:32px;
+    border-radius:50%; cursor:pointer; font-size:16px; display:flex; align-items:center; justify-content:center;
+  }
+  .modal-body{ padding:20px; }
+
+  .pin-screen{ text-align:center; padding:30px 10px; }
+  .pin-screen .lock-emoji{ font-size:40px; }
+  .pin-screen p{ color:var(--muted); font-size:13.5px; margin:8px 0 20px; }
+  .pin-input{
+    width:100%; max-width:220px; text-align:center; font-size:22px; letter-spacing:8px;
+    padding:12px; border-radius:14px; border:2px solid rgba(232,103,43,0.25); outline:none;
+    font-weight:700; color:var(--ink); background:#fff;
+  }
+  .pin-input:focus{ border-color:var(--orange); }
+  .pin-error{ color:#B23A2B; font-size:12.5px; margin-top:8px; min-height:16px; }
+
+  .btn{
+    border:none; border-radius:12px; padding:11px 18px; font-weight:700; font-size:14px;
+    cursor:pointer; font-family:'Noto Sans Ethiopic',sans-serif; transition:opacity .15s ease;
+  }
+  .btn:hover{ opacity:0.9; }
+  .btn-primary{ background:linear-gradient(135deg, var(--orange), var(--orange-dark)); color:#fff; }
+  .btn-outline{ background:#fff; color:var(--orange-dark); border:2px solid rgba(232,103,43,0.25); }
+  .btn-danger{ background:#FBE3DD; color:#B23A2B; }
+  .btn-block{ width:100%; margin-top:14px; }
+  .btn-sm{ padding:7px 12px; font-size:12.5px; border-radius:9px; }
+
+  .admin-tabs{ display:flex; gap:8px; margin-bottom:18px; }
+  .admin-tab{
+    flex:1; text-align:center; padding:10px; border-radius:12px; border:2px solid rgba(232,103,43,0.15);
+    background:#fff; color:var(--muted); font-weight:700; font-size:13.5px; cursor:pointer;
+  }
+  .admin-tab.active{ background:var(--orange); color:#fff; border-color:transparent; }
+
+  .admin-card{
+    background:#fff; border-radius:16px; padding:14px; margin-bottom:12px; box-shadow:var(--shadow);
+  }
+  .field-row{ display:flex; gap:8px; margin-bottom:8px; }
+  .field-row input, .field-row select, .field-row textarea{
+    width:100%; padding:9px 11px; border-radius:10px; border:1.5px solid rgba(232,103,43,0.20);
+    font-size:13.5px; font-family:'Noto Sans Ethiopic',sans-serif; color:var(--ink); outline:none; background:#FFFDFB;
+  }
+  .field-row input:focus, .field-row select:focus, .field-row textarea:focus{ border-color:var(--orange); }
+  label.field-label{ font-size:11px; color:var(--muted); font-weight:700; display:block; margin-bottom:4px; }
+  .field-group{ flex:1; min-width:0; }
+
+  .admin-item-row{ display:flex; justify-content:space-between; align-items:center; gap:10px; }
+  .admin-item-actions{ display:flex; gap:6px; flex-shrink:0; }
+  .avail-toggle{
+    display:flex; align-items:center; gap:6px; font-size:12px; color:var(--muted); font-weight:600; cursor:pointer;
+  }
+  .avail-toggle input{ accent-color: var(--orange); width:16px; height:16px; }
+
+  .section-title{ font-size:13px; font-weight:700; color:var(--coffee-soft); margin:18px 4px 10px; text-transform:uppercase; letter-spacing:1px;}
+  .section-title:first-child{ margin-top:0; }
+
+  .toast{
+    position:fixed; bottom:76px; left:50%; transform:translateX(-50%) translateY(20px);
+    background:var(--coffee); color:#fff; padding:11px 22px; border-radius:999px; font-size:13.5px;
+    font-weight:600; z-index:60; opacity:0; pointer-events:none; transition:all .25s ease;
+    box-shadow:0 8px 20px rgba(0,0,0,0.25);
+  }
+  .toast.show{ opacity:1; transform:translateX(-50%) translateY(0); }
+
+  .loading-screen{
+    position:fixed; inset:0; background:var(--cream); z-index:100;
+    display:flex; flex-direction:column; align-items:center; justify-content:center; gap:14px;
+  }
+  .loading-screen .spinner{
+    width:38px; height:38px; border:4px solid rgba(232,103,43,0.2); border-top-color:var(--orange);
+    border-radius:50%; animation:spin .8s linear infinite;
+  }
+  @keyframes spin{ to{ transform:rotate(360deg); } }
+  .loading-screen span{ color:var(--muted); font-weight:600; font-size:13.5px; }
+
+  @media (prefers-reduced-motion: reduce){
+    *{ animation:none !important; transition:none !important; }
+  }
+
+  .empty-admin-hint{ text-align:center; color:var(--muted); font-size:13px; padding:20px 10px; }
+</style>
+</head>
+<body>
+
+<div class="loading-screen" id="loadingScreen">
+  <div class="spinner"></div>
+  <span>ምናሌ በመጫን ላይ... / Loading menu...</span>
+</div>
+
+<div class="bg-rings" id="bgRings"></div>
+
+<header class="top">
+  <svg class="steam" viewBox="0 0 100 100"><circle cx="50" cy="50" r="48" fill="white"/></svg>
+  <div class="header-inner">
+    <svg class="jebena" viewBox="0 0 64 64" fill="none">
+      <ellipse cx="32" cy="54" rx="16" ry="6" fill="#fff" opacity="0.25"/>
+      <path d="M20 30c0-9 5-16 12-16s12 7 12 16v12c0 6-5 11-12 11s-12-5-12-11V30z" fill="#fff" opacity="0.9"/>
+      <path d="M44 26c6 1 9 5 9 9s-4 7-8 7" stroke="#fff" stroke-width="2.5" fill="none" opacity="0.85" stroke-linecap="round"/>
+      <rect x="29" y="8" width="6" height="10" rx="2" fill="#fff" opacity="0.9"/>
+      <circle cx="32" cy="6" r="3" fill="#fff" opacity="0.9"/>
+      <path d="M17 26c-2-6 0-12 4-15" stroke="#fff" stroke-width="2" fill="none" opacity="0.5" stroke-linecap="round"/>
+    </svg>
+    <div class="brand-text">
+      <h1 class="brand-font">Ebuka Coffee ‑ ኢቡካ ቡና<span class="sub-en">Restaurant &amp; Coffee House</span></h1>
+      <p class="tagline">የምግብ ዝርዝር — ይመልከቱ እና ይምረጡ</p>
+    </div>
+  </div>
+</header>
+
+<div class="cat-nav-wrap">
+  <nav class="cat-nav" id="catNav"></nav>
+</div>
+
+<main>
+  <div class="cat-heading" id="catHeading"></div>
+  <div class="grid" id="itemGrid"></div>
+</main>
+
+<footer>
+  <div class="foot-brand brand-font">ኢቡካ የማይተካ</div>
+  <div class="foot-sub">EBUKA COFFEE · ADDIS ABABA</div>
+</footer>
+
+<button class="admin-fab" id="adminFab" title="Admin">🔒</button>
+
+<div id="modalRoot"></div>
+<div class="toast" id="toast"></div>
+
+<script>
+/* ============================ DATA ============================ */
+// The menu itself lives in the Python backend (SQLite via Flask, see app.py).
+// This page talks to it through two endpoints:
+//   GET  /api/menu           -> public, returns { categories, items }
+//   POST /api/menu           -> admin only, requires header X-Admin-Pin
+//   POST /api/admin/verify   -> checks a PIN, used for the login screen
+
+function uid(prefix){ return prefix + '-' + Date.now().toString(36) + Math.random().toString(36).slice(2,7); }
+
+let state = null;
+let activeCategory = null;
+let isAuthenticated = false;
+let adminTab = 'categories';
+let adminPin = '';   // kept only in memory for this browser session, never stored
+
+/* ============================ STORAGE (Flask API) ============================ */
+async function loadData(){
+  try{
+    const res = await fetch('/api/menu');
+    if(!res.ok) throw new Error('GET /api/menu failed: ' + res.status);
+    state = await res.json();
+  }catch(e){
+    console.error('Load error', e);
+    state = { categories: [], items: [] };
+    showToast('⚠️ Could not reach the server / ሰርቨሩ ላይ መድረስ አልተቻለም');
+  }
+  activeCategory = state.categories[0] ? state.categories[0].id : null;
+}
+
+async function saveData(showToastMsg){
+  try{
+    const res = await fetch('/api/menu', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-Admin-Pin': adminPin },
+      body: JSON.stringify(state)
+    });
+    if(res.status === 401){
+      isAuthenticated = false;
+      if(showToastMsg !== false){ showToast('ፒን ትክክል አይደለም / Not authorized — please log in again'); }
+      renderAdminModal();
+      return false;
+    }
+    if(!res.ok) throw new Error('POST /api/menu failed: ' + res.status);
+    if(showToastMsg !== false){ showToast('ተቀምጧል ✓ Saved'); }
+    return true;
+  }catch(e){
+    console.error('Save error', e);
+    if(showToastMsg !== false){ showToast('ማስቀመጥ አልተሳካም / Save failed'); }
+    return false;
+  }
+}
+
+/* ============================ RENDER: PUBLIC MENU ============================ */
+function renderBgRings(){
+  const wrap = document.getElementById('bgRings');
+  const rings = [
+    {t:'8%',l:'-40px',w:'160px',h:'160px'},
+    {t:'40%',l:'92%',w:'220px',h:'220px'},
+    {t:'75%',l:'-60px',w:'200px',h:'200px'},
+  ];
+  wrap.innerHTML = rings.map(r=>`<span style="top:${r.t};left:${r.l};width:${r.w};height:${r.h};"></span>`).join('');
+}
+
+function renderCatNav(){
+  const nav = document.getElementById('catNav');
+  nav.innerHTML = state.categories.map(c=>{
+    const active = c.id === activeCategory ? 'active' : '';
+    return `<button class="cat-chip ${active}" onclick="setActiveCategory('${c.id}')">${escapeHtml(c.name)}</button>`;
+  }).join('');
+}
+
+function setActiveCategory(id){
+  activeCategory = id;
+  renderCatNav();
+  renderMenu();
+}
+window.setActiveCategory = setActiveCategory;
+
+function renderMenu(){
+  const cat = state.categories.find(c=>c.id===activeCategory);
+  const heading = document.getElementById('catHeading');
+  const grid = document.getElementById('itemGrid');
+  const items = state.items.filter(i=>i.categoryId===activeCategory);
+
+  heading.innerHTML = cat ? `<h2 class="brand-font">${escapeHtml(cat.name)}</h2><span class="count">${items.length} ንጥሎች</span>` : '';
+
+  if(items.length === 0){
+    grid.innerHTML = `<div class="empty-state" style="grid-column:1/-1;">
+      <span class="emoji">🍽️</span>
+      በዚህ ምድብ ውስጥ ምንም ምግብ የለም
+    </div>`;
+    return;
+  }
+
+  grid.innerHTML = items.map(it=>{
+    const unavailCls = it.available === false ? 'is-unavailable' : '';
+    const badge = it.available === false ? `<span class="unavailable-badge">አልቀረም / Unavailable</span>` : '';
+    const nameEn = it.nameEn ? `<span class="item-name-en">${escapeHtml(it.nameEn)}</span>` : '';
+    const desc = it.desc ? `<div class="item-desc">${escapeHtml(it.desc)}</div>` : '';
+    return `<div class="item-card ${unavailCls}">
+      <div class="item-icon">${it.icon || '🍽️'}</div>
+      <div class="item-body">
+        <div class="item-top">
+          <div>
+            <div class="item-name">${escapeHtml(it.name)}</div>
+            ${nameEn}
+          </div>
+          <div class="price-pill">${Number(it.price).toLocaleString()} ብር</div>
+        </div>
+        ${desc}
+        ${badge}
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function escapeHtml(str){
+  if(str===undefined || str===null) return '';
+  return String(str).replace(/[&<>"']/g, m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
+}
+
+function renderAll(){
+  renderCatNav();
+  renderMenu();
+}
+
+/* ============================ TOAST ============================ */
+let toastTimer = null;
+function showToast(msg){
+  const el = document.getElementById('toast');
+  el.textContent = msg;
+  el.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(()=> el.classList.remove('show'), 2200);
+}
+
+/* ============================ ADMIN MODAL ============================ */
+const modalRoot = document.getElementById('modalRoot');
+
+function openAdmin(){
+  isAuthenticated = false;
+  adminTab = 'categories';
+  renderAdminModal();
+}
+document.getElementById('adminFab').addEventListener('click', openAdmin);
+
+function closeAdmin(){
+  modalRoot.innerHTML = '';
+}
+window.closeAdmin = closeAdmin;
+
+function renderAdminModal(){
+  if(!isAuthenticated){
+    modalRoot.innerHTML = `
+      <div class="modal-overlay" onclick="if(event.target===this) closeAdmin()">
+        <div class="modal">
+          <div class="modal-head">
+            <h3>የአስተዳዳሪ መግቢያ / Admin</h3>
+            <button class="icon-btn" onclick="closeAdmin()">✕</button>
+          </div>
+          <div class="modal-body">
+            <div class="pin-screen">
+              <div class="lock-emoji">🔒</div>
+              <p>ምናሌውን ለማስተካከል የ4 አሃዝ ፒን ያስገቡ<br>Enter the 4-digit admin PIN to edit the menu</p>
+              <input type="password" inputmode="numeric" maxlength="4" class="pin-input" id="pinInput" placeholder="••••">
+              <div class="pin-error" id="pinError"></div>
+              <button class="btn btn-primary btn-block" onclick="checkPin()">ግባ / Enter</button>
+            </div>
+          </div>
+        </div>
+      </div>`;
+    const input = document.getElementById('pinInput');
+    input.focus();
+    input.addEventListener('keydown', e=>{ if(e.key==='Enter') checkPin(); });
+    return;
+  }
+
+  modalRoot.innerHTML = `
+    <div class="modal-overlay" onclick="if(event.target===this) closeAdmin()">
+      <div class="modal">
+        <div class="modal-head">
+          <h3>የአስተዳዳሪ ፓነል / Admin Panel</h3>
+          <button class="icon-btn" onclick="closeAdmin()">✕</button>
+        </div>
+        <div class="modal-body">
+          <div class="admin-tabs">
+            <div class="admin-tab ${adminTab==='categories'?'active':''}" onclick="switchAdminTab('categories')">ምድቦች / Categories</div>
+            <div class="admin-tab ${adminTab==='items'?'active':''}" onclick="switchAdminTab('items')">ምግቦች / Items</div>
+          </div>
+          <div id="adminContent"></div>
+        </div>
+      </div>
+    </div>`;
+  renderAdminContent();
+}
+
+async function checkPin(){
+  const val = document.getElementById('pinInput').value;
+  const errEl = document.getElementById('pinError');
+  errEl.textContent = '';
+  try{
+    const res = await fetch('/api/admin/verify', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ pin: val })
+    });
+    const data = await res.json();
+    if(data && data.ok){
+      adminPin = val;
+      isAuthenticated = true;
+      renderAdminModal();
+    } else {
+      errEl.textContent = 'ትክክል ያልሆነ ፒን / Incorrect PIN';
+    }
+  }catch(e){
+    console.error('PIN check error', e);
+    errEl.textContent = 'ሰርቨሩ ላይ መድረስ አልተቻለም / Could not reach server';
+  }
+}
+window.checkPin = checkPin;
+
+function switchAdminTab(tab){
+  adminTab = tab;
+  renderAdminModal();
+}
+window.switchAdminTab = switchAdminTab;
+
+function renderAdminContent(){
+  const el = document.getElementById('adminContent');
+  if(adminTab === 'categories'){
+    el.innerHTML = renderAdminCategories();
+  } else {
+    el.innerHTML = renderAdminItems();
+  }
+}
+
+/* ---- categories admin ---- */
+function renderAdminCategories(){
+  const rows = state.categories.map(c=>{
+    const itemCount = state.items.filter(i=>i.categoryId===c.id).length;
+    return `<div class="admin-card">
+      <div class="field-row">
+        <div class="field-group">
+          <label class="field-label">የምድብ ስም / Category name</label>
+          <input type="text" value="${escapeHtml(c.name)}" onchange="renameCategory('${c.id}', this.value)">
+        </div>
+      </div>
+      <div class="admin-item-row">
+        <span style="font-size:12px;color:var(--muted);">${itemCount} ምግቦች</span>
+        <button class="btn btn-danger btn-sm" onclick="deleteCategory('${c.id}')">አጥፋ / Delete</button>
+      </div>
+    </div>`;
+  }).join('');
+
+  return `
+    <div class="section-title">ያሉ ምድቦች / Existing categories</div>
+    ${rows || '<div class="empty-admin-hint">ምንም ምድብ የለም</div>'}
+    <div class="section-title">አዲስ ምድብ ጨምር / Add category</div>
+    <div class="admin-card">
+      <div class="field-row">
+        <div class="field-group">
+          <input type="text" id="newCatName" placeholder="የምድብ ስም ያስገቡ...">
+        </div>
+      </div>
+      <button class="btn btn-primary btn-block" onclick="addCategory()">➕ ምድብ ጨምር / Add category</button>
+    </div>`;
+}
+
+function renameCategory(id, newName){
+  const cat = state.categories.find(c=>c.id===id);
+  if(!cat) return;
+  if(!newName.trim()){ showToast('ስም ባዶ መሆን አይችልም'); renderAdminContent(); return; }
+  cat.name = newName.trim();
+  saveData();
+  renderAll();
+  renderAdminContent();
+}
+window.renameCategory = renameCategory;
+
+function deleteCategory(id){
+  const itemCount = state.items.filter(i=>i.categoryId===id).length;
+  const msg = itemCount > 0
+    ? `ይህ ምድብ ${itemCount} ምግቦችን ይዟል። ምድቡን ማጥፋት እነዚህንም ምግቦች ያጠፋል። እርግጠኛ ነዎት?`
+    : 'ይህን ምድብ ማጥፋት ይፈልጋሉ?';
+  if(!confirm(msg)) return;
+  state.categories = state.categories.filter(c=>c.id!==id);
+  state.items = state.items.filter(i=>i.categoryId!==id);
+  if(activeCategory === id){
+    activeCategory = state.categories[0] ? state.categories[0].id : null;
+  }
+  saveData();
+  renderAll();
+  renderAdminContent();
+}
+window.deleteCategory = deleteCategory;
+
+function addCategory(){
+  const input = document.getElementById('newCatName');
+  const name = input.value.trim();
+  if(!name){ showToast('እባክዎ ስም ያስገቡ'); return; }
+  const newCat = { id: uid('cat'), name };
+  state.categories.push(newCat);
+  if(!activeCategory) activeCategory = newCat.id;
+  saveData();
+  renderAll();
+  renderAdminContent();
+}
+window.addCategory = addCategory;
+
+/* ---- items admin ---- */
+function renderAdminItems(){
+  if(state.categories.length === 0){
+    return `<div class="empty-admin-hint">መጀመሪያ ቢያንስ አንድ ምድብ ይፍጠሩ / Create a category first</div>`;
+  }
+
+  const grouped = state.categories.map(cat=>{
+    const items = state.items.filter(i=>i.categoryId===cat.id);
+    const rows = items.map(it=>`
+      <div class="admin-card">
+        <div class="field-row">
+          <div class="field-group">
+            <label class="field-label">ስም (አማርኛ)</label>
+            <input type="text" value="${escapeHtml(it.name)}" onchange="updateItem('${it.id}','name',this.value)">
+          </div>
+          <div class="field-group">
+            <label class="field-label">Name (English)</label>
+            <input type="text" value="${escapeHtml(it.nameEn||'')}" onchange="updateItem('${it.id}','nameEn',this.value)">
+          </div>
+        </div>
+        <div class="field-row">
+          <div class="field-group" style="max-width:110px;">
+            <label class="field-label">ዋጋ / Price</label>
+            <input type="number" min="0" value="${it.price}" onchange="updateItem('${it.id}','price',this.value)">
+          </div>
+          <div class="field-group" style="max-width:80px;">
+            <label class="field-label">Icon</label>
+            <input type="text" value="${escapeHtml(it.icon||'')}" onchange="updateItem('${it.id}','icon',this.value)">
+          </div>
+          <div class="field-group">
+            <label class="field-label">ምድብ / Category</label>
+            <select onchange="updateItem('${it.id}','categoryId',this.value)">
+              ${state.categories.map(c=>`<option value="${c.id}" ${c.id===it.categoryId?'selected':''}>${escapeHtml(c.name)}</option>`).join('')}
+            </select>
+          </div>
+        </div>
+        <div class="field-row">
+          <div class="field-group">
+            <label class="field-label">መግለጫ / Description</label>
+            <input type="text" value="${escapeHtml(it.desc||'')}" onchange="updateItem('${it.id}','desc',this.value)">
+          </div>
+        </div>
+        <div class="admin-item-row">
+          <label class="avail-toggle">
+            <input type="checkbox" ${it.available!==false?'checked':''} onchange="updateItem('${it.id}','available',this.checked)">
+            ይገኛል / Available
+          </label>
+          <button class="btn btn-danger btn-sm" onclick="deleteItem('${it.id}')">አጥፋ / Delete</button>
+        </div>
+      </div>
+    `).join('');
+    return `<div class="section-title">${escapeHtml(cat.name)} (${items.length})</div>${rows || '<div class="empty-admin-hint">ምንም ምግብ የለም</div>'}`;
+  }).join('');
+
+  return `
+    ${grouped}
+    <div class="section-title">አዲስ ምግብ ጨምር / Add new item</div>
+    <div class="admin-card">
+      <div class="field-row">
+        <div class="field-group">
+          <label class="field-label">ስም (አማርኛ)</label>
+          <input type="text" id="newItemName" placeholder="ለምሳሌ፡ ዶሮ ወጥ">
+        </div>
+        <div class="field-group">
+          <label class="field-label">Name (English)</label>
+          <input type="text" id="newItemNameEn" placeholder="e.g. Doro Wet">
+        </div>
+      </div>
+      <div class="field-row">
+        <div class="field-group" style="max-width:110px;">
+          <label class="field-label">ዋጋ / Price</label>
+          <input type="number" min="0" id="newItemPrice" placeholder="0">
+        </div>
+        <div class="field-group" style="max-width:80px;">
+          <label class="field-label">Icon</label>
+          <input type="text" id="newItemIcon" placeholder="🍽️">
+        </div>
+        <div class="field-group">
+          <label class="field-label">ምድብ / Category</label>
+          <select id="newItemCategory">
+            ${state.categories.map(c=>`<option value="${c.id}">${escapeHtml(c.name)}</option>`).join('')}
+          </select>
+        </div>
+      </div>
+      <div class="field-row">
+        <div class="field-group">
+          <label class="field-label">መግለጫ / Description (optional)</label>
+          <input type="text" id="newItemDesc" placeholder="">
+        </div>
+      </div>
+      <button class="btn btn-primary btn-block" onclick="addItem()">➕ ምግብ ጨምር / Add item</button>
+    </div>`;
+}
+
+function updateItem(id, field, value){
+  const item = state.items.find(i=>i.id===id);
+  if(!item) return;
+  if(field === 'price'){
+    const num = parseFloat(value);
+    item.price = isNaN(num) ? 0 : num;
+  } else if(field === 'available'){
+    item.available = !!value;
+  } else {
+    item[field] = value;
+  }
+  saveData();
+  renderAll();
+  renderAdminContent();
+}
+window.updateItem = updateItem;
+
+function deleteItem(id){
+  if(!confirm('ይህን ምግብ ማጥፋት ይፈልጋሉ?')) return;
+  state.items = state.items.filter(i=>i.id!==id);
+  saveData();
+  renderAll();
+  renderAdminContent();
+}
+window.deleteItem = deleteItem;
+
+function addItem(){
+  const name = document.getElementById('newItemName').value.trim();
+  const nameEn = document.getElementById('newItemNameEn').value.trim();
+  const price = parseFloat(document.getElementById('newItemPrice').value) || 0;
+  const icon = document.getElementById('newItemIcon').value.trim() || '🍽️';
+  const categoryId = document.getElementById('newItemCategory').value;
+  const desc = document.getElementById('newItemDesc').value.trim();
+
+  if(!name){ showToast('እባክዎ የምግብ ስም ያስገቡ'); return; }
+  if(!categoryId){ showToast('እባክዎ ምድብ ይምረጡ'); return; }
+
+  state.items.push({ id: uid('i'), categoryId, name, nameEn, price, desc, icon, available:true });
+  saveData();
+  renderAll();
+  renderAdminContent();
+}
+window.addItem = addItem;
+
+/* ============================ INIT ============================ */
+async function init(){
+  renderBgRings();
+  await loadData();
+  renderAll();
+  document.getElementById('loadingScreen').style.display = 'none';
+}
+init();
+</script>
+</body>
+</html>
