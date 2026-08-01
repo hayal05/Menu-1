@@ -1,6 +1,2 @@
-Flask
-gunicorn
-requests
-opencv-python-headless
-numpy
-pdfplumber
+Flask==3.0.3
+gunicorn==22.0.0

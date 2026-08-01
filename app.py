@@ -5,6 +5,10 @@ A small Flask app that serves the menu website and stores the menu
 (categories + items) in a local SQLite database. The admin panel in the
 browser talks to this server via a tiny JSON API, gated by an admin PIN.
 
+Customers can attach a payment screenshot to their order; it's stored as-is
+and shown to the admin for manual verification (no automatic QR/receipt
+verification — that was removed for reliability).
+
 Run locally:
     pip install -r requirements.txt
     python app.py
@@ -16,19 +20,11 @@ Deploy on Render (or any host that runs Python):
 """
 
 import os
-import io
-import re
 import json
-import base64
 import secrets
 import sqlite3
-from urllib.parse import urlparse
 from datetime import datetime, timezone
 
-import numpy as np
-import cv2
-import requests
-import pdfplumber
 from flask import Flask, jsonify, request, render_template
 
 app = Flask(__name__)
@@ -93,269 +89,6 @@ DEFAULT_STATE = {
         {"id": "i-16", "categoryId": "cold", "name": "ስሙዚ", "nameEn": "Smoothie", "price": 90, "desc": "", "icon": "🍹", "available": True},
     ],
 }
-
-
-# ---------------------------------------------------------------------------
-# CBE payment auto-verification
-# ---------------------------------------------------------------------------
-# Every CBE ("Commercial Bank of Ethiopia") transfer receipt carries a QR code
-# that encodes a short verification URL (served from apps.cbe.com.et). That
-# URL returns the bank's own copy of the transaction receipt (payer, receiver,
-# amount, date, reference number...). So instead of trusting a screenshot at
-# face value, we:
-#   1. decode the QR code embedded in the uploaded screenshot,
-#   2. make sure it actually points at a CBE domain (never fetch arbitrary
-#      URLs a forged image might contain),
-#   3. fetch the receipt CBE serves for that URL and pull the fields out of it,
-#   4. compare the amount + receiving account against the order + the
-#      admin's configured payment details.
-#
-# NOTE: CBE does not publish an official API for this — the field labels
-# below are based on the layout CBE's verification receipts commonly use.
-# If CBE changes that layout the regexes may need updating; that's why we
-# always store the raw extracted text too, so an admin can still eyeball a
-# screenshot that fails auto-parsing.
-
-CBE_ROOT_DOMAIN = 'cbe.com.et'
-
-
-def _is_cbe_host(hostname):
-    """True if hostname is cbe.com.et or any subdomain of it (e.g. the real
-    receipt-verification link lives on mbreciept.cbe.com.et — CBE's own
-    subdomain, typo and all — not a made-up 'apps.cbe.com.et')."""
-    if not hostname:
-        return False
-    hostname = hostname.lower()
-    return hostname == CBE_ROOT_DOMAIN or hostname.endswith('.' + CBE_ROOT_DOMAIN)
-
-CBE_FIELD_PATTERNS = {
-    # CBE's own receipt text (and the "Thank you" screen the app shows) reads
-    # as a sentence, not a labeled form — e.g.:
-    #   "You have successfully transferred 500 ETB from your account
-    #    1*********2345 to Saba Coffee with Abay Bank account number
-    #    1**56789 on Jun 22, 2026 07:13 AM with Transaction ID: FT26173S4Z9B.
-    #    Remark: p. Total Amount Debited: 508.30 ETB with Service Charge of
-    #    ETB7.00, VAT (15%) of ETB1.05 and Disaster Recovery (5%) of ETB0.25."
-    # The "transferred X ETB" figure is what actually reaches the merchant —
-    # that's what we compare against the order total. "Total Amount Debited"
-    # includes the sender's bank fees on top and is not useful for matching.
-    'amount': [
-        r'transferred\s+([\d,]+\.?\d*)\s*ETB',
-        r"Transferred\s*Amount\s*[:\-]?\s*([\d,]+\.?\d*)",   # fallback: older tabular-receipt guess
-        r"\bAmount\s*[:\-]?\s*([\d,]+\.?\d*)\s*(?:ETB|Birr)?",
-    ],
-    'total_debited': [
-        r'Total\s+Amount\s+Debited\s*:?\s*([\d,]+\.?\d*)\s*ETB',
-    ],
-    'payer_account': [
-        r'from\s+your\s+account\s+([0-9\*]+)',
-        r"Payer'?s?\s*Account\s*[:\-]?\s*([0-9\*Xx]+)",
-    ],
-    'receiver': [
-        r'\bto\s+([A-Za-z][A-Za-z\.\s]*?)\s+(?:with\s+[A-Za-z\s]+?\s+)?account\s+number',
-        r"Receiver'?s?\s*Name\s*[:\-]?\s*([^\n]+)",
-        r"Credited\s*Party\s*Name\s*[:\-]?\s*([^\n]+)",
-    ],
-    'receiver_account': [
-        r'account\s+number\s+([0-9\*Xx]+)',
-        r"Receiver'?s?\s*Account\s*[:\-]?\s*([0-9\*Xx]+)",
-        r"Credited\s*Party\s*Account\s*[:\-]?\s*([0-9\*Xx]+)",
-    ],
-    'reference': [
-        r'Transaction\s+ID\s*:?\s*([A-Za-z0-9]+)',
-        r'Reference\s*No\.?\s*\(?\s*VAT\s*Invoice\s*No\.?\)?\s*[:\-]?\s*([A-Za-z0-9]+)',
-        r'Reference\s*No\.?\s*[:\-]?\s*([A-Za-z0-9]+)',
-        r'\bFT\s*([A-Za-z0-9]{8,})',
-    ],
-    'date': [
-        r'\bon\s+([A-Za-z]{3,9}\s+\d{1,2},?\s+\d{4}\s+\d{1,2}:\d{2}\s*[AP]M)',
-        r"Payment\s*Date\s*(?:&|and)?\s*Time\s*[:\-]?\s*([0-9A-Za-z\/\-.,: ]+)",
-        r"Transaction\s*Date\s*[:\-]?\s*([0-9A-Za-z\/\-.,: ]+)",
-    ],
-    'payer': [
-        r"Payer'?s?\s*Name\s*[:\-]?\s*([^\n]+)",
-    ],
-    'remark': [
-        r'Remark\s*:\s*([^\.]*)\.',
-    ],
-}
-
-
-def _decode_qr_from_data_url(data_url):
-    """Decode a QR code embedded in a base64 image data-URL.
-
-    Returns the raw string encoded in the QR (normally a CBE verification
-    URL) or None if no QR code could be found.
-    """
-    try:
-        _, encoded = data_url.split(',', 1)
-        img_bytes = base64.b64decode(encoded)
-        arr = np.frombuffer(img_bytes, dtype=np.uint8)
-        img = cv2.imdecode(arr, cv2.IMREAD_COLOR)
-        if img is None:
-            return None
-
-        detector = cv2.QRCodeDetector()
-
-        data, _, _ = detector.detectAndDecode(img)
-        if data:
-            return data
-
-        # Screenshots are often small/low-res relative to a real photo, and
-        # QR detectors do noticeably better on upscaled images — try that
-        # before giving up.
-        h, w = img.shape[:2]
-        longest = max(h, w)
-        if longest and longest < 1400:
-            scale = 1400 / longest
-            resized = cv2.resize(img, (int(w * scale), int(h * scale)), interpolation=cv2.INTER_CUBIC)
-            data, _, _ = detector.detectAndDecode(resized)
-            if data:
-                return data
-
-        # Grayscale + threshold sometimes helps with busy chat-app screenshots.
-        gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-        _, thresh = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
-        data, _, _ = detector.detectAndDecode(thresh)
-        return data or None
-    except Exception:
-        return None
-
-
-def _fetch_cbe_receipt(url):
-    """Fetch the receipt page/PDF a CBE QR code points to and return its
-    text content. Refuses to fetch anything outside CBE's own domain."""
-    try:
-        host = (urlparse(url).hostname or '').lower()
-    except Exception:
-        return {'ok': False, 'error': 'invalid_url'}
-
-    if not _is_cbe_host(host):
-        return {'ok': False, 'error': 'qr_not_cbe'}
-
-    try:
-        resp = requests.get(
-            url,
-            timeout=12,
-            headers={'User-Agent': 'Mozilla/5.0 (compatible; EbukaCoffeeOrderVerifier/1.0)'},
-        )
-    except requests.RequestException as exc:
-        return {'ok': False, 'error': 'fetch_failed', 'detail': str(exc)}
-
-    if resp.status_code != 200:
-        return {'ok': False, 'error': 'fetch_failed', 'detail': f'HTTP {resp.status_code}'}
-
-    content_type = resp.headers.get('Content-Type', '')
-    if 'pdf' in content_type.lower() or resp.content[:4] == b'%PDF':
-        try:
-            text_parts = []
-            with pdfplumber.open(io.BytesIO(resp.content)) as pdf:
-                for page in pdf.pages:
-                    text_parts.append(page.extract_text() or '')
-            text = '\n'.join(text_parts)
-        except Exception as exc:
-            return {'ok': False, 'error': 'pdf_parse_failed', 'detail': str(exc)}
-    else:
-        # HTML/plain text receipt — strip tags crudely and normalize whitespace.
-        text = re.sub(r'<[^>]+>', ' ', resp.text)
-        text = re.sub(r'&nbsp;', ' ', text)
-
-    text = re.sub(r'[ \t]+', ' ', text)
-    return {'ok': True, 'text': text}
-
-
-def _parse_cbe_receipt_text(text):
-    fields = {}
-    for key, patterns in CBE_FIELD_PATTERNS.items():
-        for pattern in patterns:
-            match = re.search(pattern, text, re.IGNORECASE)
-            if match:
-                fields[key] = match.group(1).strip()
-                break
-    fields['raw_text'] = text.strip()[:4000]
-    return fields
-
-
-def _get_payment_config():
-    conn = get_conn()
-    row = conn.execute("SELECT data FROM menu WHERE id = 1").fetchone()
-    conn.close()
-    if not row:
-        return {}
-    return json.loads(row['data']).get('payment', {}) or {}
-
-
-def verify_cbe_payment(order_total, payment_screenshot):
-    """Best-effort auto-verification of a CBE payment screenshot.
-
-    Returns a dict: { status, reason, qrUrl, fields }
-    status is one of:
-      no_screenshot | no_qr | qr_not_cbe | fetch_failed | parse_failed |
-      verified | review | mismatch
-    This never raises — callers should treat any exception here as
-    'error' and still let the order go through, since auto-verification
-    is a convenience on top of manual admin review, not a gate.
-    """
-    result = {'status': 'no_screenshot', 'reason': '', 'qrUrl': None, 'fields': {}}
-
-    if not payment_screenshot:
-        result['reason'] = 'No payment screenshot was uploaded.'
-        return result
-
-    qr_value = _decode_qr_from_data_url(payment_screenshot)
-    if not qr_value:
-        result['status'] = 'no_qr'
-        result['reason'] = 'Could not find a readable QR code in the screenshot.'
-        return result
-    result['qrUrl'] = qr_value
-
-    fetched = _fetch_cbe_receipt(qr_value)
-    if not fetched['ok']:
-        if fetched['error'] == 'qr_not_cbe':
-            result['status'] = 'qr_not_cbe'
-            result['reason'] = 'The QR code does not point to a CBE verification page.'
-        else:
-            result['status'] = 'fetch_failed'
-            result['reason'] = f"Could not fetch the CBE receipt ({fetched.get('detail', fetched['error'])})."
-        return result
-
-    fields = _parse_cbe_receipt_text(fetched['text'])
-    result['fields'] = fields
-
-    if not fields.get('amount'):
-        result['status'] = 'parse_failed'
-        result['reason'] = 'Fetched the CBE receipt but could not read the transaction details from it.'
-        return result
-
-    try:
-        receipt_amount = float(fields['amount'].replace(',', ''))
-    except (TypeError, ValueError):
-        receipt_amount = None
-
-    amount_ok = receipt_amount is not None and abs(receipt_amount - float(order_total)) < 1.0
-
-    payment_cfg = _get_payment_config()
-    expected_name = (payment_cfg.get('accountName') or '').strip().lower()
-    expected_number = re.sub(r'\D', '', payment_cfg.get('accountNumber') or '')
-
-    receiver_name = (fields.get('receiver') or '').strip().lower()
-    receiver_number = re.sub(r'\D', '', fields.get('receiver_account') or '')
-
-    name_ok = bool(expected_name) and bool(receiver_name) and expected_name in receiver_name
-    number_ok = bool(expected_number) and bool(receiver_number) and expected_number[-6:] == receiver_number[-6:]
-
-    if amount_ok and (name_ok or number_ok):
-        result['status'] = 'verified'
-        result['reason'] = 'Amount and receiving account matched the order and configured payment details.'
-    elif amount_ok:
-        result['status'] = 'review'
-        result['reason'] = 'Amount matches the order, but the receiving name/account on the receipt could not be confirmed — please double check.'
-    else:
-        result['status'] = 'mismatch'
-        got = fields.get('amount', '?')
-        result['reason'] = f'Amount on the CBE receipt ({got}) does not match the order total ({order_total}).'
-
-    return result
 
 
 def get_conn():
@@ -498,23 +231,14 @@ def create_order():
         if len(payment_screenshot) > 8_000_000:
             return jsonify({'error': 'payment screenshot is too large'}), 400
 
-    # Best-effort auto-verification via the CBE QR code. Never let a failure
-    # here block the order — this is a convenience layer for the admin, not
-    # a payment gateway.
-    try:
-        verification = verify_cbe_payment(total, payment_screenshot)
-    except Exception as exc:
-        verification = {'status': 'error', 'reason': str(exc), 'qrUrl': None, 'fields': {}}
-
     conn = get_conn()
     order_code = generate_order_code(conn)
     cur = conn.execute(
         "INSERT INTO orders (customer_name, phone, items, total, status, created_at, payment_screenshot, "
-        "verification_status, verification_data, public_code) VALUES (?, ?, ?, ?, 'new', ?, ?, ?, ?, ?)",
+        "public_code) VALUES (?, ?, ?, ?, 'new', ?, ?, ?)",
         (
             name, phone, json.dumps(items), total,
-            datetime.now(timezone.utc).isoformat(), payment_screenshot,
-            verification['status'], json.dumps(verification), order_code,
+            datetime.now(timezone.utc).isoformat(), payment_screenshot, order_code,
         ),
     )
     conn.commit()
@@ -525,8 +249,6 @@ def create_order():
         'orderId': order_id,
         'orderCode': order_code,
         'total': total,
-        'verificationStatus': verification['status'],
-        'verificationReason': verification['reason'],
     })
 
 
@@ -551,41 +273,10 @@ def list_orders():
             'status': r['status'],
             'createdAt': r['created_at'],
             'paymentScreenshot': r['payment_screenshot'],
-            'verificationStatus': r['verification_status'],
-            'verificationData': json.loads(r['verification_data']) if r['verification_data'] else None,
         }
         for r in rows
     ]
     return jsonify(orders)
-
-
-@app.route('/api/orders/<int:order_id>/verify', methods=['POST'])
-def reverify_order(order_id):
-    """Re-run CBE QR auto-verification for an existing order (e.g. after a
-    transient network failure, or if the admin swapped in a corrected
-    screenshot)."""
-    pin = request.headers.get('X-Admin-Pin', '')
-    if pin != ADMIN_PIN:
-        return jsonify({'error': 'unauthorized'}), 401
-
-    conn = get_conn()
-    row = conn.execute("SELECT total, payment_screenshot FROM orders WHERE id = ?", (order_id,)).fetchone()
-    if row is None:
-        conn.close()
-        return jsonify({'error': 'order not found'}), 404
-
-    try:
-        verification = verify_cbe_payment(row['total'], row['payment_screenshot'])
-    except Exception as exc:
-        verification = {'status': 'error', 'reason': str(exc), 'qrUrl': None, 'fields': {}}
-
-    conn.execute(
-        "UPDATE orders SET verification_status = ?, verification_data = ? WHERE id = ?",
-        (verification['status'], json.dumps(verification), order_id),
-    )
-    conn.commit()
-    conn.close()
-    return jsonify({'ok': True, 'verificationStatus': verification['status'], 'verificationData': verification})
 
 
 @app.route('/api/orders/status/<code>', methods=['GET'])
