@@ -401,33 +401,6 @@
   }
   .order-card-screenshot{ margin-top:10px; }
 
-  /* ---------- payment auto-verification ---------- */
-  .verify-badge{
-    display:inline-flex; align-items:center; gap:4px; font-size:10.5px; font-weight:700;
-    padding:3px 9px; border-radius:999px; margin-top:8px; line-height:1.4;
-  }
-  .verify-badge.v-verified{ background:#E4F6E9; color:#1F7A3F; }
-  .verify-badge.v-review{ background:#FFF3D6; color:#8A6400; }
-  .verify-badge.v-mismatch{ background:#FBE3DD; color:#B23A2B; }
-  .verify-badge.v-pending{ background:#EFE7E1; color:var(--muted); }
-  .verify-details{
-    font-size:10.5px; color:var(--muted); background:#FBF7F2; border-radius:9px;
-    padding:6px 8px; margin-top:5px; line-height:1.45; max-width:100%;
-  }
-  .verify-details .vd-reason{ margin-bottom:4px; }
-  .verify-fields{ display:flex; flex-wrap:wrap; gap:4px 5px; }
-  .verify-fields .vf-chip{
-    display:inline-flex; align-items:center; gap:3px; background:#fff; border-radius:7px;
-    padding:2px 6px; font-size:10px; color:var(--ink); max-width:100%;
-    overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
-  }
-  .verify-fields .vf-chip b{ color:var(--muted); font-weight:700; flex-shrink:0; }
-  .verify-actions{ margin-top:5px; }
-  .verify-actions .btn-sm{ padding:5px 10px; font-size:11px; border-radius:8px; }
-  @media(min-width:520px){
-    .verify-fields .vf-chip{ max-width:220px; }
-  }
-
   /* ---------- hamburger menu hub ---------- */
   .menu-hub{ display:flex; flex-direction:column; gap:10px; }
   .mode-switch{
@@ -1797,8 +1770,8 @@ function renderOrdersList(orders){
       <div class="order-card-items">${itemsLine}</div>
       ${o.paymentScreenshot ? `<div class="order-card-screenshot">
         <img class="order-screenshot-thumb" src="${o.paymentScreenshot}" alt="Payment screenshot" onclick="window.open(this.src, '_blank')" title="ትልቅ ለማየት ይጫኑ / Click to view full size">
+        <div class="empty-admin-hint" style="text-align:left; padding:4px 0 0; font-size:11px;">👆 ክፍያውን እራስዎ ያረጋግጡ / Please verify this payment manually</div>
       </div>` : ''}
-      ${o.paymentScreenshot ? renderVerificationBlock(o) : ''}
       <div class="order-card-foot">
         <div class="order-card-total">${Number(o.total).toLocaleString()} ብር</div>
         <div class="order-card-actions">
@@ -1812,66 +1785,6 @@ function renderOrdersList(orders){
   }).join('');
 }
 
-const VERIFY_BADGES = {
-  verified:      { cls:'v-verified', label:'✅ ራስ-ተረጋግጧል / Auto-verified' },
-  review:        { cls:'v-review',   label:'⚠️ እባክዎ ያረጋግጡ / Needs review' },
-  mismatch:      { cls:'v-mismatch', label:'❌ አልተመሳሰለም / Amount mismatch' },
-  no_qr:         { cls:'v-pending',  label:'⏳ QR ኮድ አልተገኘም / No QR found' },
-  qr_not_cbe:    { cls:'v-pending',  label:'⏳ የCBE QR አይደለም / QR is not CBE' },
-  fetch_failed:  { cls:'v-pending',  label:'⏳ መረጃ ማምጣት አልተሳካም / Could not reach CBE' },
-  parse_failed:  { cls:'v-pending',  label:'⏳ ደረሰኝ ማንበብ አልተቻለም / Could not read receipt' },
-  error:         { cls:'v-pending',  label:'⏳ ስህተት ተፈጥሯል / Verification error' },
-  no_screenshot: { cls:'v-pending',  label:'⏳ ፎቶ የለም / No screenshot' },
-  unverified:    { cls:'v-pending',  label:'⏳ አልተረጋገጠም / Not verified yet' },
-};
-
-function renderVerificationBlock(o){
-  const status = o.verificationStatus || 'unverified';
-  const badge = VERIFY_BADGES[status] || VERIFY_BADGES.unverified;
-  const data = o.verificationData || {};
-  const f = data.fields || {};
-
-  const chips = [
-    f.amount ? `<span class="vf-chip"><b>Amt</b>${escapeHtml(f.amount)} ETB</span>` : '',
-    f.receiver ? `<span class="vf-chip"><b>To</b>${escapeHtml(f.receiver)}</span>` : '',
-    f.payer ? `<span class="vf-chip"><b>From</b>${escapeHtml(f.payer)}</span>` : '',
-    f.reference ? `<span class="vf-chip"><b>Ref</b>${escapeHtml(f.reference)}</span>` : '',
-    f.date ? `<span class="vf-chip"><b>On</b>${escapeHtml(f.date)}</span>` : '',
-  ].filter(Boolean).join('');
-
-  return `
-    <div>
-      <span class="verify-badge ${badge.cls}">${badge.label}</span>
-      ${data.reason ? `<div class="verify-details">
-        <div class="vd-reason">${escapeHtml(data.reason)}</div>
-        ${chips ? `<div class="verify-fields">${chips}</div>` : ''}
-      </div>` : ''}
-      <div class="verify-actions">
-        <button class="btn btn-outline btn-sm" onclick="reverifyOrder(${o.id})">🔁 ደግመው ያረጋግጡ / Re-verify</button>
-      </div>
-    </div>`;
-}
-
-async function reverifyOrder(orderId){
-  try{
-    const res = await fetch('/api/orders/' + orderId + '/verify', {
-      method: 'POST',
-      headers: { 'X-Admin-Pin': adminPin }
-    });
-    if(res.status === 401){
-      isAuthenticated = false;
-      showToast('ፒን ትክክል አይደለም / Not authorized');
-      renderAdminModal();
-      return;
-    }
-    if(!res.ok) throw new Error('Re-verify failed: ' + res.status);
-    loadOrders();
-  }catch(e){
-    console.error('Re-verify error', e);
-    showToast('ማረጋገጥ አልተሳካም / Re-verification failed');
-  }
-}
-window.reverifyOrder = reverifyOrder;
 
 async function setOrderStatus(orderId, status){
   try{
