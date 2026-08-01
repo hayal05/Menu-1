@@ -20,6 +20,7 @@ import io
 import re
 import json
 import base64
+import secrets
 import sqlite3
 from urllib.parse import urlparse
 from datetime import datetime, timezone
@@ -32,6 +33,23 @@ from flask import Flask, jsonify, request, render_template
 
 app = Flask(__name__)
 
+# Characters chosen to avoid visual ambiguity when a customer copies the code
+# down by hand (no 0/O, no 1/I).
+ORDER_CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'
+ORDER_CODE_LENGTH = 6
+
+
+def generate_order_code(conn, length=ORDER_CODE_LENGTH, attempts=8):
+    """Generate a random public order code that isn't already in use. Falls
+    back to a longer code if we somehow keep colliding (astronomically
+    unlikely at this volume, but cheap to guard against)."""
+    for _ in range(attempts):
+        code = ''.join(secrets.choice(ORDER_CODE_ALPHABET) for _ in range(length))
+        exists = conn.execute("SELECT 1 FROM orders WHERE public_code = ?", (code,)).fetchone()
+        if not exists:
+            return code
+    return ''.join(secrets.choice(ORDER_CODE_ALPHABET) for _ in range(length + 2))
+
 DB_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'menu.db')
 
 # Change this via an environment variable in production (Render -> Environment tab),
@@ -39,6 +57,10 @@ DB_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'menu.db')
 ADMIN_PIN = os.environ.get('ADMIN_PIN', '2580')
 
 DEFAULT_STATE = {
+    "brand": {
+        "name": "Saba Coffee ‑ ሳባ ቡና",
+        "type": "Restaurant & Coffee House",
+    },
     "payment": {
         "bankName": "Commercial Bank of Ethiopia (CBE)",
         "accountName": "Saba Coffee",
@@ -371,6 +393,12 @@ def init_db():
     if 'verification_data' not in existing_cols:
         conn.execute("ALTER TABLE orders ADD COLUMN verification_data TEXT")
         conn.commit()
+    # Migrate older databases that predate public order codes.
+    if 'public_code' not in existing_cols:
+        conn.execute("ALTER TABLE orders ADD COLUMN public_code TEXT")
+        conn.commit()
+    conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_orders_public_code ON orders(public_code)")
+    conn.commit()
 
     row = conn.execute("SELECT data FROM menu WHERE id = 1").fetchone()
     if row is None:
@@ -383,6 +411,11 @@ def init_db():
         saved = json.loads(row['data'])
         if 'payment' not in saved:
             saved['payment'] = DEFAULT_STATE['payment']
+            conn.execute("UPDATE menu SET data = ? WHERE id = 1", (json.dumps(saved),))
+            conn.commit()
+        # Migrate older saved menus that predate the "brand" field.
+        if 'brand' not in saved:
+            saved['brand'] = DEFAULT_STATE['brand']
             conn.execute("UPDATE menu SET data = ? WHERE id = 1", (json.dumps(saved),))
             conn.commit()
     conn.close()
@@ -474,13 +507,14 @@ def create_order():
         verification = {'status': 'error', 'reason': str(exc), 'qrUrl': None, 'fields': {}}
 
     conn = get_conn()
+    order_code = generate_order_code(conn)
     cur = conn.execute(
         "INSERT INTO orders (customer_name, phone, items, total, status, created_at, payment_screenshot, "
-        "verification_status, verification_data) VALUES (?, ?, ?, ?, 'new', ?, ?, ?, ?)",
+        "verification_status, verification_data, public_code) VALUES (?, ?, ?, ?, 'new', ?, ?, ?, ?, ?)",
         (
             name, phone, json.dumps(items), total,
             datetime.now(timezone.utc).isoformat(), payment_screenshot,
-            verification['status'], json.dumps(verification),
+            verification['status'], json.dumps(verification), order_code,
         ),
     )
     conn.commit()
@@ -489,6 +523,7 @@ def create_order():
     return jsonify({
         'ok': True,
         'orderId': order_id,
+        'orderCode': order_code,
         'total': total,
         'verificationStatus': verification['status'],
         'verificationReason': verification['reason'],
@@ -508,6 +543,7 @@ def list_orders():
     orders = [
         {
             'id': r['id'],
+            'code': r['public_code'],
             'name': r['customer_name'],
             'phone': r['phone'],
             'items': json.loads(r['items']),
@@ -550,6 +586,33 @@ def reverify_order(order_id):
     conn.commit()
     conn.close()
     return jsonify({'ok': True, 'verificationStatus': verification['status'], 'verificationData': verification})
+
+
+@app.route('/api/orders/status/<code>', methods=['GET'])
+def order_status_by_code(code):
+    """Public order-status lookup — no PIN required. Looks up a single order
+    by its random public code (given to the customer right after checkout),
+    not by phone number, so no scanning/matching across every order and no
+    way to browse or guess your way into someone else's order history."""
+    code = (code or '').strip().upper()
+    if not code:
+        return jsonify({'error': 'Order code is required'}), 400
+
+    conn = get_conn()
+    row = conn.execute("SELECT * FROM orders WHERE public_code = ?", (code,)).fetchone()
+    conn.close()
+
+    if row is None:
+        return jsonify({'error': 'No order found with that code'}), 404
+
+    return jsonify({
+        'id': row['id'],
+        'code': row['public_code'],
+        'items': json.loads(row['items']),
+        'total': row['total'],
+        'status': row['status'],
+        'createdAt': row['created_at'],
+    })
 
 
 @app.route('/api/orders/<int:order_id>', methods=['PATCH'])
