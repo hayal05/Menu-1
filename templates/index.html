@@ -32,6 +32,27 @@
   }
   .brand-font{font-family:'Noto Serif Ethiopic','Noto Sans Ethiopic',serif;}
 
+  /* ---------- loading spinner (coffee cup + rising steam) ---------- */
+  .spinner-cup{ display:inline-block; vertical-align:middle; color:#fff; margin-right:8px; }
+  .spinner-cup.spinner-dark{ color:var(--orange); }
+  .spinner-cup.sm{ width:18px; height:18px; }
+  .spinner-cup.md{ width:28px; height:28px; margin-right:0; }
+  .spinner-cup.lg{ width:38px; height:38px; margin-right:0; }
+  .spinner-cup .cup-outline{ fill:none; stroke:currentColor; stroke-width:1.6; stroke-linecap:round; stroke-linejoin:round; }
+  .spinner-cup .steam{ stroke:currentColor; stroke-width:1.6; stroke-linecap:round; fill:none; opacity:0; transform-origin:12px 20px; animation:steamRise 1.3s ease-in-out infinite; }
+  .spinner-cup .steam.s2{ animation-delay:.22s; }
+  .spinner-cup .steam.s3{ animation-delay:.44s; }
+  @keyframes steamRise{
+    0%{ transform:translateY(2px) scaleY(0.5); opacity:0; }
+    35%{ opacity:1; }
+    100%{ transform:translateY(-5px) scaleY(1.05); opacity:0; }
+  }
+  .btn[disabled]{ opacity:0.85; cursor:wait; pointer-events:none; }
+  .loading-block{
+    display:flex; flex-direction:column; align-items:center; justify-content:center;
+    gap:12px; padding:40px 20px; color:var(--muted); font-size:14px;
+  }
+
   /* ---------- background texture ---------- */
   .bg-rings{
     position:fixed; inset:0; z-index:0; pointer-events:none; overflow:hidden;
@@ -270,6 +291,25 @@
   .sidebar-head h3{ margin:0; font-size:17px; font-weight:700; }
   .sidebar-body{ padding:20px; flex:1; }
 
+  /* ---------- fullscreen image lightbox ---------- */
+  .img-lightbox{
+    position:fixed; inset:0; z-index:200; background:rgba(20,10,6,0.92);
+    display:flex; align-items:center; justify-content:center;
+    padding:24px; cursor:zoom-out; animation:fadeIn .15s ease both;
+  }
+  .img-lightbox img{
+    max-width:100%; max-height:100%; object-fit:contain;
+    border-radius:10px; box-shadow:0 10px 40px rgba(0,0,0,0.5);
+    animation:lightboxZoomIn .18s cubic-bezier(.32,.72,.28,1) both;
+  }
+  @keyframes lightboxZoomIn{ from{ transform:scale(0.94); opacity:0; } to{ transform:scale(1); opacity:1; } }
+  .img-lightbox-close{
+    position:fixed; top:16px; right:16px; width:40px; height:40px; border-radius:50%;
+    background:rgba(255,255,255,0.12); color:#fff; border:none; font-size:20px;
+    display:flex; align-items:center; justify-content:center; cursor:pointer;
+  }
+  .img-lightbox-close:hover{ background:rgba(255,255,255,0.22); }
+
   /* ---------- modal ---------- */
   .modal-overlay{
     position:fixed; inset:0; background:rgba(61,32,21,0.55); z-index:50;
@@ -369,11 +409,6 @@
     position:fixed; inset:0; background:var(--cream); z-index:100;
     display:flex; flex-direction:column; align-items:center; justify-content:center; gap:14px;
   }
-  .loading-screen .spinner{
-    width:38px; height:38px; border:4px solid rgba(232,103,43,0.2); border-top-color:var(--orange);
-    border-radius:50%; animation:spin .8s linear infinite;
-  }
-  @keyframes spin{ to{ transform:rotate(360deg); } }
   .loading-screen span{ color:var(--muted); font-weight:600; font-size:13.5px; }
 
   @media (prefers-reduced-motion: reduce){
@@ -478,7 +513,13 @@
 <body>
 
 <div class="loading-screen" id="loadingScreen">
-  <div class="spinner"></div>
+  <svg class="spinner-cup lg spinner-dark" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+    <path class="steam s1" d="M8 3c0 1-1.2 1-1.2 2s1.2 1 1.2 2"/>
+    <path class="steam s2" d="M12 3c0 1-1.2 1-1.2 2s1.2 1 1.2 2"/>
+    <path class="steam s3" d="M16 3c0 1-1.2 1-1.2 2s1.2 1 1.2 2"/>
+    <path class="cup-outline" d="M4 10h13v5.5A4.5 4.5 0 0 1 12.5 20h-4A4.5 4.5 0 0 1 4 15.5V10z"/>
+    <path class="cup-outline" d="M17 11.5h1.2a2.3 2.3 0 0 1 0 4.6H17"/>
+  </svg>
   <span>ምናሌ በመጫን ላይ... / Loading menu...</span>
 </div>
 
@@ -515,7 +556,7 @@
 
 <footer>
   <div class="foot-brand brand-font" id="footBrandText"></div>
-  <div class="foot-sub">SABA COFFEE · ADDIS ABABA</div>
+  <div class="foot-sub" id="footSubText"></div>
 </footer>
 
 <button class="cart-fab is-empty" id="cartFab" title="Cart / ጋሪ">
@@ -529,6 +570,7 @@
 <div id="adminView" class="admin-view" style="display:none;"></div>
 
 <div id="modalRoot"></div>
+<div id="lightboxRoot"></div>
 <div id="cartModalRoot"></div>
 <div class="toast" id="toast"></div>
 
@@ -670,9 +712,11 @@ function escapeHtml(str){
 function renderBrand(){
   const name = (state.brand && state.brand.name) || 'Saba Coffee ‑ ሳባ ቡና';
   const type = (state.brand && state.brand.type) || 'Restaurant & Coffee House';
+  const footerText = (state.brand && state.brand.footerText) || 'SABA COFFEE · ADDIS ABABA';
   document.getElementById('brandNameText').textContent = name;
   document.getElementById('brandTypeText').textContent = type;
   document.getElementById('footBrandText').textContent = name;
+  document.getElementById('footSubText').textContent = footerText;
   document.title = `${name} | ምግብ ዝርዝር`;
 }
 
@@ -881,7 +925,7 @@ function renderCheckoutForm(){
           </div>
           <div class="order-error" id="orderError" style="color:#B23A2B;font-size:12.5px;min-height:16px;margin:4px 0 8px;"></div>
           <button class="btn btn-outline btn-block" onclick="renderCartModal()" style="margin-bottom:8px;">← ወደ ጋሪ ተመለስ / Back to cart</button>
-          <button class="btn btn-primary btn-block" onclick="submitOrder()">✅ ትዕዛዝ አረጋግጥ / Confirm order</button>
+          <button class="btn btn-primary btn-block" onclick="submitOrder(event)">✅ ትዕዛዝ አረጋግጥ / Confirm order</button>
         </div>
       </div>
     </div>`;
@@ -889,6 +933,36 @@ function renderCheckoutForm(){
   renderPaymentScreenshotPreview();
 }
 window.renderCheckoutForm = renderCheckoutForm;
+
+// Coffee-cup themed loading spinner (cup + three rising steam wisps).
+// size: 'sm' (buttons), 'md' (inline blocks), 'lg' (full-screen loader).
+function spinnerCup(size, dark){
+  const cls = `spinner-cup ${size}${dark ? ' spinner-dark' : ''}`;
+  return `<svg class="${cls}" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+    <path class="steam s1" d="M8 3c0 1-1.2 1-1.2 2s1.2 1 1.2 2"/>
+    <path class="steam s2" d="M12 3c0 1-1.2 1-1.2 2s1.2 1 1.2 2"/>
+    <path class="steam s3" d="M16 3c0 1-1.2 1-1.2 2s1.2 1 1.2 2"/>
+    <path class="cup-outline" d="M4 10h13v5.5A4.5 4.5 0 0 1 12.5 20h-4A4.5 4.5 0 0 1 4 15.5V10z"/>
+    <path class="cup-outline" d="M17 11.5h1.2a2.3 2.3 0 0 1 0 4.6H17"/>
+  </svg>`;
+}
+
+// Small reusable helper: puts a button into a disabled "spinning" state and
+// remembers its original label so it can be restored afterwards.
+function setBtnLoading(btnEl, loadingLabel){
+  if(!btnEl) return;
+  if(btnEl.dataset.origLabel === undefined) btnEl.dataset.origLabel = btnEl.innerHTML;
+  btnEl.disabled = true;
+  btnEl.innerHTML = `${spinnerCup('sm')}${loadingLabel}`;
+}
+function clearBtnLoading(btnEl){
+  if(!btnEl) return;
+  btnEl.disabled = false;
+  if(btnEl.dataset.origLabel !== undefined){
+    btnEl.innerHTML = btnEl.dataset.origLabel;
+    delete btnEl.dataset.origLabel;
+  }
+}
 
 function handlePaymentScreenshotChange(event){
   const file = event.target.files && event.target.files[0];
@@ -925,7 +999,7 @@ function renderPaymentScreenshotPreview(){
   if(!paymentScreenshotData){ wrap.innerHTML = ''; return; }
   wrap.innerHTML = `
     <div class="payment-preview">
-      <img src="${paymentScreenshotData}" alt="Payment screenshot">
+      <img src="${paymentScreenshotData}" alt="Payment screenshot" onclick="openImageLightbox(this.src)" style="cursor:zoom-in;" title="ትልቅ ለማየት ይጫኑ / Tap to view full size">
       <button type="button" class="btn btn-danger btn-sm" onclick="clearPaymentScreenshot()">አስወግድ / Remove</button>
     </div>`;
 }
@@ -938,7 +1012,7 @@ function clearPaymentScreenshot(){
 }
 window.clearPaymentScreenshot = clearPaymentScreenshot;
 
-async function submitOrder(){
+async function submitOrder(event){
   const nameEl = document.getElementById('orderName');
   const phoneEl = document.getElementById('orderPhone');
   const errEl = document.getElementById('orderError');
@@ -955,6 +1029,8 @@ async function submitOrder(){
   const total = cartTotal();
 
   errEl.textContent = '';
+  const submitBtn = event && event.currentTarget ? event.currentTarget : document.querySelector('[onclick^="submitOrder("]');
+  setBtnLoading(submitBtn, 'በመላክ ላይ... / Submitting...');
   try{
     const res = await fetch('/api/orders', {
       method: 'POST',
@@ -974,6 +1050,8 @@ async function submitOrder(){
   }catch(e){
     console.error('Order submit error', e);
     errEl.textContent = 'ትዕዛዝ መላክ አልተሳካም / Could not submit order — please try again';
+  }finally{
+    clearBtnLoading(submitBtn);
   }
 }
 window.submitOrder = submitOrder;
@@ -1027,6 +1105,34 @@ function showToast(msg){
   clearTimeout(toastTimer);
   toastTimer = setTimeout(()=> el.classList.remove('show'), 2200);
 }
+
+/* ============================ IMAGE LIGHTBOX ============================
+   Fullscreen preview for tapped images (e.g. payment screenshots). Uses its
+   own root element (separate from modalRoot) so it can layer on top of the
+   admin panel / checkout form without wiping them out underneath. */
+const lightboxRoot = document.getElementById('lightboxRoot');
+let lightboxKeyHandler = null;
+
+function openImageLightbox(src){
+  if(!src) return;
+  lightboxRoot.innerHTML = `
+    <div class="img-lightbox" onclick="closeImageLightbox()">
+      <button class="img-lightbox-close" onclick="event.stopPropagation(); closeImageLightbox()" title="ዝጋ / Close">✕</button>
+      <img src="${src}" alt="Payment screenshot" onclick="event.stopPropagation()">
+    </div>`;
+  lightboxKeyHandler = (e)=>{ if(e.key === 'Escape') closeImageLightbox(); };
+  document.addEventListener('keydown', lightboxKeyHandler);
+}
+window.openImageLightbox = openImageLightbox;
+
+function closeImageLightbox(){
+  lightboxRoot.innerHTML = '';
+  if(lightboxKeyHandler){
+    document.removeEventListener('keydown', lightboxKeyHandler);
+    lightboxKeyHandler = null;
+  }
+}
+window.closeImageLightbox = closeImageLightbox;
 
 /* ============================ ADMIN MODAL ============================ */
 const modalRoot = document.getElementById('modalRoot');
@@ -1133,7 +1239,7 @@ function renderOrderStatusModal(order, codeVal, errorMsg){
           <p class="order-status-hint">ትዕዛዝ ሲያስገቡ የተሰጠዎትን የትዕዛዝ ቁጥር ያስገቡ<br>Enter the order code you received at checkout</p>
           <div class="order-status-form">
             <input type="text" autocapitalize="characters" autocomplete="off" maxlength="8" id="statusCodeInput" placeholder="e.g. VK7MQY" value="${codeVal ? escapeHtml(codeVal) : ''}" style="text-transform:uppercase; letter-spacing:2px; font-weight:700;">
-            <button class="btn btn-primary" onclick="checkOrderStatus()">ፈልግ / Check</button>
+            <button class="btn btn-primary" onclick="checkOrderStatus(event)">ፈልግ / Check</button>
           </div>
           ${errorMsg ? `<div class="order-status-error">${escapeHtml(errorMsg)}</div>` : ''}
           ${resultHtml}
@@ -1143,16 +1249,18 @@ function renderOrderStatusModal(order, codeVal, errorMsg){
 
   const input = document.getElementById('statusCodeInput');
   input.focus();
-  input.addEventListener('keydown', e=>{ if(e.key==='Enter') checkOrderStatus(); });
+  input.addEventListener('keydown', e=>{ if(e.key==='Enter') checkOrderStatus(e); });
 }
 window.renderOrderStatusModal = renderOrderStatusModal;
 
-async function checkOrderStatus(){
+async function checkOrderStatus(event){
   const val = document.getElementById('statusCodeInput').value.trim();
   if(!val){
     renderOrderStatusModal(null, val, 'የትዕዛዝ ቁጥር ያስገቡ / Enter your order code');
     return;
   }
+  const checkBtn = document.querySelector('[onclick^="checkOrderStatus("]');
+  setBtnLoading(checkBtn, 'በመፈለግ ላይ... / Checking...');
   try{
     const res = await fetch('/api/orders/status/' + encodeURIComponent(val));
     const data = await res.json().catch(()=>null);
@@ -1164,6 +1272,8 @@ async function checkOrderStatus(){
   }catch(e){
     console.error('Order status check failed', e);
     renderOrderStatusModal(null, val, 'ሰርቨሩ ላይ መድረስ አልተቻለም / Could not reach server');
+  }finally{
+    clearBtnLoading(checkBtn);
   }
 }
 window.checkOrderStatus = checkOrderStatus;
@@ -1301,7 +1411,7 @@ function renderAdminContent(){
   } else if(adminTab === 'payment'){
     el.innerHTML = renderAdminPayment();
   } else if(adminTab === 'orders'){
-    el.innerHTML = `<div class="empty-admin-hint">ትዕዛዞች በመጫን ላይ... / Loading orders...</div>`;
+    el.innerHTML = `<div class="loading-block">${spinnerCup('md', true)}ትዕዛዞች በመጫን ላይ... / Loading orders...</div>`;
     loadOrders();
   }
 }
@@ -1322,6 +1432,12 @@ function renderAdminBrand(){
         <div class="field-group">
           <label class="field-label">ዓይነት / Type</label>
           <input type="text" value="${escapeHtml(b.type||'')}" onchange="updateBrandInfo('type', this.value)" placeholder="e.g. Restaurant & Coffee House">
+        </div>
+      </div>
+      <div class="field-row">
+        <div class="field-group">
+          <label class="field-label">የግርጌ ጽሑፍ / Footer text</label>
+          <input type="text" value="${escapeHtml(b.footerText||'')}" onchange="updateBrandInfo('footerText', this.value)" placeholder="e.g. SABA COFFEE · ADDIS ABABA">
         </div>
       </div>
       <div class="empty-admin-hint" style="text-align:left; padding:6px 0 0;">ይህ በራስጌ፣ በግርጌ እና በአሳሽ ትር ላይ ይታያል / This shows in the header, footer, and browser tab.</div>
@@ -1769,7 +1885,7 @@ function renderOrdersList(orders){
       </div>
       <div class="order-card-items">${itemsLine}</div>
       ${o.paymentScreenshot ? `<div class="order-card-screenshot">
-        <img class="order-screenshot-thumb" src="${o.paymentScreenshot}" alt="Payment screenshot" onclick="window.open(this.src, '_blank')" title="ትልቅ ለማየት ይጫኑ / Click to view full size">
+        <img class="order-screenshot-thumb" src="${o.paymentScreenshot}" alt="Payment screenshot" onclick="openImageLightbox(this.src)" title="ትልቅ ለማየት ይጫኑ / Tap to view full size">
         <div class="empty-admin-hint" style="text-align:left; padding:4px 0 0; font-size:11px;">👆 ክፍያውን እራስዎ ያረጋግጡ / Please verify this payment manually</div>
       </div>` : ''}
       <div class="order-card-foot">
