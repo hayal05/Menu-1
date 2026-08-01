@@ -1,16 +1,34 @@
 """
-Ebuka Coffee - ኢቡካ ቡና  |  Menu backend
+Saba Coffee - ሳባ ቡና  |  Menu backend
 --------------------------------------
 A small Flask app that serves the menu website and stores the menu
-(categories + items) in a local SQLite database. The admin panel in the
-browser talks to this server via a tiny JSON API, gated by an admin PIN.
+(categories + items) in a Postgres database hosted on Neon. The admin panel
+in the browser talks to this server via a tiny JSON API, gated by an admin
+PIN.
 
 Customers can attach a payment screenshot to their order; it's stored as-is
 and shown to the admin for manual verification (no automatic QR/receipt
 verification — that was removed for reliability).
 
+--------------------------------------------------------------------------
+NEON SETUP (one-time)
+--------------------------------------------------------------------------
+1. Create a free project at https://neon.tech
+2. In the Neon dashboard, open your project -> "Connection Details" and copy
+   the connection string. Prefer the **pooled** connection string (the host
+   contains "-pooler" in it, e.g. ...-pooler.us-east-2.aws.neon.tech) — this
+   app opens/closes a connection per request, and Neon's pooler is built for
+   exactly that pattern, so it avoids exhausting Neon's connection limit.
+3. On Render, open your service -> Environment tab, and add:
+       DATABASE_URL = <the connection string you copied>
+   (Render's own "Add a Postgres" free databases are a separate thing from
+   Neon — this app only needs one DATABASE_URL env var, wherever it points.)
+4. Deploy. The tables are created automatically on first boot — no manual
+   migration step needed.
+
 Run locally:
     pip install -r requirements.txt
+    export DATABASE_URL="postgresql://user:pass@host/dbname?sslmode=require"
     python app.py
     -> open http://localhost:5000
 
@@ -20,11 +38,12 @@ Deploy on Render (or any host that runs Python):
 """
 
 import os
-import json
 import secrets
-import sqlite3
+from contextlib import contextmanager
 from datetime import datetime, timezone
 
+import psycopg2
+import psycopg2.extras
 from flask import Flask, jsonify, request, render_template
 
 app = Flask(__name__)
@@ -34,28 +53,22 @@ app = Flask(__name__)
 ORDER_CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'
 ORDER_CODE_LENGTH = 6
 
-
-def generate_order_code(conn, length=ORDER_CODE_LENGTH, attempts=8):
-    """Generate a random public order code that isn't already in use. Falls
-    back to a longer code if we somehow keep colliding (astronomically
-    unlikely at this volume, but cheap to guard against)."""
-    for _ in range(attempts):
-        code = ''.join(secrets.choice(ORDER_CODE_ALPHABET) for _ in range(length))
-        exists = conn.execute("SELECT 1 FROM orders WHERE public_code = ?", (code,)).fetchone()
-        if not exists:
-            return code
-    return ''.join(secrets.choice(ORDER_CODE_ALPHABET) for _ in range(length + 2))
-
-DB_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'menu.db')
-
 # Change this via an environment variable in production (Render -> Environment tab),
 # or just edit the default string below.
 ADMIN_PIN = os.environ.get('ADMIN_PIN', '2580')
+
+DATABASE_URL = os.environ.get('DATABASE_URL', '')
+if not DATABASE_URL:
+    raise RuntimeError(
+        "DATABASE_URL is not set. Add it in Render -> Environment, using the "
+        "connection string from your Neon project (Connection Details page)."
+    )
 
 DEFAULT_STATE = {
     "brand": {
         "name": "Saba Coffee ‑ ሳባ ቡና",
         "type": "Restaurant & Coffee House",
+        "footerText": "SABA COFFEE · ADDIS ABABA",
     },
     "payment": {
         "bankName": "Commercial Bank of Ethiopia (CBE)",
@@ -91,67 +104,95 @@ DEFAULT_STATE = {
 }
 
 
+@contextmanager
 def get_conn():
-    conn = sqlite3.connect(DB_PATH)
-    conn.row_factory = sqlite3.Row
-    return conn
+    """Open a fresh connection per request/use and always close it. With
+    Neon's pooled connection string this is cheap — Neon's own pgbouncer
+    handles the actual pooling on their side, so we don't need to manage a
+    connection pool of our own in the app (that's the pattern Neon
+    recommends for short-lived serverless/request-scoped connections)."""
+    conn = psycopg2.connect(DATABASE_URL, cursor_factory=psycopg2.extras.RealDictCursor)
+    try:
+        yield conn
+    finally:
+        conn.close()
+
+
+def generate_order_code(cur, length=ORDER_CODE_LENGTH, attempts=8):
+    """Generate a random public order code that isn't already in use. Falls
+    back to a longer code if we somehow keep colliding (astronomically
+    unlikely at this volume, but cheap to guard against)."""
+    for _ in range(attempts):
+        code = ''.join(secrets.choice(ORDER_CODE_ALPHABET) for _ in range(length))
+        cur.execute("SELECT 1 FROM orders WHERE public_code = %s", (code,))
+        if cur.fetchone() is None:
+            return code
+    return ''.join(secrets.choice(ORDER_CODE_ALPHABET) for _ in range(length + 2))
 
 
 def init_db():
-    conn = get_conn()
-    conn.execute(
-        "CREATE TABLE IF NOT EXISTS menu (id INTEGER PRIMARY KEY CHECK (id = 1), data TEXT NOT NULL)"
-    )
-    conn.execute(
-        """CREATE TABLE IF NOT EXISTS orders (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            customer_name TEXT NOT NULL,
-            phone TEXT NOT NULL,
-            items TEXT NOT NULL,
-            total REAL NOT NULL,
-            status TEXT NOT NULL DEFAULT 'new',
-            created_at TEXT NOT NULL,
-            payment_screenshot TEXT
-        )"""
-    )
-    # Migrate older databases that predate the payment_screenshot column.
-    existing_cols = [r['name'] for r in conn.execute("PRAGMA table_info(orders)").fetchall()]
-    if 'payment_screenshot' not in existing_cols:
-        conn.execute("ALTER TABLE orders ADD COLUMN payment_screenshot TEXT")
-        conn.commit()
-    # Migrate older databases that predate CBE auto-verification.
-    if 'verification_status' not in existing_cols:
-        conn.execute("ALTER TABLE orders ADD COLUMN verification_status TEXT DEFAULT 'unverified'")
-        conn.commit()
-    if 'verification_data' not in existing_cols:
-        conn.execute("ALTER TABLE orders ADD COLUMN verification_data TEXT")
-        conn.commit()
-    # Migrate older databases that predate public order codes.
-    if 'public_code' not in existing_cols:
-        conn.execute("ALTER TABLE orders ADD COLUMN public_code TEXT")
-        conn.commit()
-    conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_orders_public_code ON orders(public_code)")
-    conn.commit()
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "CREATE TABLE IF NOT EXISTS menu (id INTEGER PRIMARY KEY CHECK (id = 1), data JSONB NOT NULL)"
+            )
+            cur.execute(
+                """CREATE TABLE IF NOT EXISTS orders (
+                    id SERIAL PRIMARY KEY,
+                    customer_name TEXT NOT NULL,
+                    phone TEXT NOT NULL,
+                    items JSONB NOT NULL,
+                    total NUMERIC NOT NULL,
+                    status TEXT NOT NULL DEFAULT 'new',
+                    created_at TIMESTAMPTZ NOT NULL,
+                    payment_screenshot TEXT,
+                    verification_status TEXT DEFAULT 'unverified',
+                    verification_data TEXT,
+                    public_code TEXT
+                )"""
+            )
+            # Defensive migrations for tables that may already exist from an
+            # earlier, narrower schema — Postgres supports IF NOT EXISTS on
+            # ADD COLUMN, so this is safe to run on every boot.
+            for col_def in (
+                "payment_screenshot TEXT",
+                "verification_status TEXT DEFAULT 'unverified'",
+                "verification_data TEXT",
+                "public_code TEXT",
+            ):
+                cur.execute(f"ALTER TABLE orders ADD COLUMN IF NOT EXISTS {col_def}")
+            cur.execute(
+                "CREATE UNIQUE INDEX IF NOT EXISTS idx_orders_public_code ON orders(public_code)"
+            )
 
-    row = conn.execute("SELECT data FROM menu WHERE id = 1").fetchone()
-    if row is None:
-        conn.execute(
-            "INSERT INTO menu (id, data) VALUES (1, ?)", (json.dumps(DEFAULT_STATE),)
-        )
+            cur.execute("SELECT data FROM menu WHERE id = 1")
+            row = cur.fetchone()
+            if row is None:
+                cur.execute(
+                    "INSERT INTO menu (id, data) VALUES (1, %s)",
+                    (psycopg2.extras.Json(DEFAULT_STATE),),
+                )
+            else:
+                saved = row['data']
+                changed = False
+                # Migrate older saved menus that predate the "payment" field.
+                if 'payment' not in saved:
+                    saved['payment'] = DEFAULT_STATE['payment']
+                    changed = True
+                # Migrate older saved menus that predate the "brand" field.
+                if 'brand' not in saved:
+                    saved['brand'] = DEFAULT_STATE['brand']
+                    changed = True
+                # Migrate older saved menus that predate the brand.footerText field.
+                elif 'footerText' not in saved['brand']:
+                    saved['brand']['footerText'] = DEFAULT_STATE['brand']['footerText']
+                    changed = True
+                if changed:
+                    cur.execute(
+                        "UPDATE menu SET data = %s WHERE id = 1",
+                        (psycopg2.extras.Json(saved),),
+                    )
         conn.commit()
-    else:
-        # Migrate older saved menus that predate the "payment" field.
-        saved = json.loads(row['data'])
-        if 'payment' not in saved:
-            saved['payment'] = DEFAULT_STATE['payment']
-            conn.execute("UPDATE menu SET data = ? WHERE id = 1", (json.dumps(saved),))
-            conn.commit()
-        # Migrate older saved menus that predate the "brand" field.
-        if 'brand' not in saved:
-            saved['brand'] = DEFAULT_STATE['brand']
-            conn.execute("UPDATE menu SET data = ? WHERE id = 1", (json.dumps(saved),))
-            conn.commit()
-    conn.close()
 
 
 init_db()
@@ -164,10 +205,11 @@ def index():
 
 @app.route('/api/menu', methods=['GET'])
 def get_menu():
-    conn = get_conn()
-    row = conn.execute("SELECT data FROM menu WHERE id = 1").fetchone()
-    conn.close()
-    return jsonify(json.loads(row['data']))
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute("SELECT data FROM menu WHERE id = 1")
+            row = cur.fetchone()
+    return jsonify(row['data'])
 
 
 @app.route('/api/menu', methods=['POST'])
@@ -180,10 +222,13 @@ def save_menu():
     if not payload or 'categories' not in payload or 'items' not in payload:
         return jsonify({'error': 'invalid payload'}), 400
 
-    conn = get_conn()
-    conn.execute("UPDATE menu SET data = ? WHERE id = 1", (json.dumps(payload),))
-    conn.commit()
-    conn.close()
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "UPDATE menu SET data = %s WHERE id = 1",
+                (psycopg2.extras.Json(payload),),
+            )
+        conn.commit()
     return jsonify({'ok': True})
 
 
@@ -231,19 +276,21 @@ def create_order():
         if len(payment_screenshot) > 8_000_000:
             return jsonify({'error': 'payment screenshot is too large'}), 400
 
-    conn = get_conn()
-    order_code = generate_order_code(conn)
-    cur = conn.execute(
-        "INSERT INTO orders (customer_name, phone, items, total, status, created_at, payment_screenshot, "
-        "public_code) VALUES (?, ?, ?, ?, 'new', ?, ?, ?)",
-        (
-            name, phone, json.dumps(items), total,
-            datetime.now(timezone.utc).isoformat(), payment_screenshot, order_code,
-        ),
-    )
-    conn.commit()
-    order_id = cur.lastrowid
-    conn.close()
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            order_code = generate_order_code(cur)
+            cur.execute(
+                "INSERT INTO orders (customer_name, phone, items, total, status, created_at, "
+                "payment_screenshot, public_code) VALUES (%s, %s, %s, %s, 'new', %s, %s, %s) "
+                "RETURNING id",
+                (
+                    name, phone, psycopg2.extras.Json(items), total,
+                    datetime.now(timezone.utc), payment_screenshot, order_code,
+                ),
+            )
+            order_id = cur.fetchone()['id']
+        conn.commit()
+
     return jsonify({
         'ok': True,
         'orderId': order_id,
@@ -258,9 +305,10 @@ def list_orders():
     if pin != ADMIN_PIN:
         return jsonify({'error': 'unauthorized'}), 401
 
-    conn = get_conn()
-    rows = conn.execute("SELECT * FROM orders ORDER BY id DESC").fetchall()
-    conn.close()
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute("SELECT * FROM orders ORDER BY id DESC")
+            rows = cur.fetchall()
 
     orders = [
         {
@@ -268,10 +316,10 @@ def list_orders():
             'code': r['public_code'],
             'name': r['customer_name'],
             'phone': r['phone'],
-            'items': json.loads(r['items']),
-            'total': r['total'],
+            'items': r['items'],
+            'total': float(r['total']),
             'status': r['status'],
-            'createdAt': r['created_at'],
+            'createdAt': r['created_at'].isoformat(),
             'paymentScreenshot': r['payment_screenshot'],
         }
         for r in rows
@@ -289,9 +337,10 @@ def order_status_by_code(code):
     if not code:
         return jsonify({'error': 'Order code is required'}), 400
 
-    conn = get_conn()
-    row = conn.execute("SELECT * FROM orders WHERE public_code = ?", (code,)).fetchone()
-    conn.close()
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute("SELECT * FROM orders WHERE public_code = %s", (code,))
+            row = cur.fetchone()
 
     if row is None:
         return jsonify({'error': 'No order found with that code'}), 404
@@ -299,10 +348,10 @@ def order_status_by_code(code):
     return jsonify({
         'id': row['id'],
         'code': row['public_code'],
-        'items': json.loads(row['items']),
-        'total': row['total'],
+        'items': row['items'],
+        'total': float(row['total']),
         'status': row['status'],
-        'createdAt': row['created_at'],
+        'createdAt': row['created_at'].isoformat(),
     })
 
 
@@ -317,10 +366,10 @@ def update_order(order_id):
     if status not in ('new', 'done'):
         return jsonify({'error': 'invalid status'}), 400
 
-    conn = get_conn()
-    conn.execute("UPDATE orders SET status = ? WHERE id = ?", (status, order_id))
-    conn.commit()
-    conn.close()
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute("UPDATE orders SET status = %s WHERE id = %s", (status, order_id))
+        conn.commit()
     return jsonify({'ok': True})
 
 
@@ -330,10 +379,10 @@ def delete_order(order_id):
     if pin != ADMIN_PIN:
         return jsonify({'error': 'unauthorized'}), 401
 
-    conn = get_conn()
-    conn.execute("DELETE FROM orders WHERE id = ?", (order_id,))
-    conn.commit()
-    conn.close()
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute("DELETE FROM orders WHERE id = %s", (order_id,))
+        conn.commit()
     return jsonify({'ok': True})
 
 
