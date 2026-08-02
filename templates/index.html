@@ -2646,8 +2646,8 @@ async function pollOrdersForNew(){
   if(!adminModeActive) return;
   try{
     const res = await fetch('/api/orders', { headers: { 'X-Admin-Pin': adminPin } });
-    if(res.status === 401) return; // stale pin — let the normal loadOrders() flow surface this
-    if(!res.ok) return;
+    if(res.status === 401){ console.warn('Order poll: 401 — stale admin pin, badge will stay silent until re-login'); return; }
+    if(!res.ok){ console.warn('Order poll: unexpected status', res.status); return; }
     const orders = await res.json();
 
     if(!ordersBaselineReady){
@@ -2672,6 +2672,16 @@ async function pollOrdersForNew(){
   }
 }
 
+// Browsers throttle (or fully pause) background setInterval timers once a
+// tab is hidden/backgrounded — very common on phones when the screen locks
+// or the admin switches apps. Without this, the 15s poll can silently stop
+// ticking and the badge looks "broken" until the tab is reloaded. Firing an
+// immediate poll the moment the tab is visible/focused again closes that gap.
+function onOrdersWatcherFocus(){
+  if(!adminModeActive) return;
+  pollOrdersForNew();
+}
+
 function startOrdersWatcher(){
   stopOrdersWatcher();
   ordersBaselineReady = false;
@@ -2682,6 +2692,8 @@ function startOrdersWatcher(){
   }
   pollOrdersForNew(); // establishes the baseline immediately
   ordersPollTimer = setInterval(pollOrdersForNew, ORDERS_POLL_MS);
+  document.addEventListener('visibilitychange', onOrdersWatcherFocus);
+  window.addEventListener('focus', onOrdersWatcherFocus);
 }
 
 function stopOrdersWatcher(){
@@ -2689,6 +2701,8 @@ function stopOrdersWatcher(){
   ordersBaselineReady = false;
   knownOrderIds = new Set();
   unseenOrdersCount = 0;
+  document.removeEventListener('visibilitychange', onOrdersWatcherFocus);
+  window.removeEventListener('focus', onOrdersWatcherFocus);
 }
 
 async function loadOrders(){
