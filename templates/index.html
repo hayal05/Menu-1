@@ -598,7 +598,7 @@
     <path class="cup-outline" d="M4 10h13v5.5A4.5 4.5 0 0 1 12.5 20h-4A4.5 4.5 0 0 1 4 15.5V10z"/>
     <path class="cup-outline" d="M17 11.5h1.2a2.3 2.3 0 0 1 0 4.6H17"/>
   </svg>
-  <span>Loading menu...</span>
+  <span>ምናሌ በመጫን ላይ... / Loading menu...</span>
 </div>
 <script>
   // If a logo was cached from a previous visit, swap the default cup icon
@@ -973,7 +973,7 @@ let cart = {};
 function renderItemCartControl(itemId){
   const qty = cart[itemId] || 0;
   if(qty === 0){
-    return `<button class="add-cart-btn" onclick="handleAddClick('${                    return return return return return return return return return ')">➕እዘዝ  / Add</button>`;
+    return `<button class="add-cart-btn" onclick="handleAddClick('${itemId}')">➕ ጨምር / Add</button>`;
   }
   return `<div class="qty-stepper">
     <button onclick="changeQty('${itemId}', -1)">−</button>
@@ -1065,12 +1065,12 @@ function renderOrderTypeModal(itemId){
             </div>
           </div>
           <button class="btn btn-primary btn-block order-type-btn" id="dineInBtn" onclick="chooseOrderType('dine_in')">
-            🍽️ እዚሁ / In house
+            🍽️ በቦታው ላይ / In house
           </button>
           <button class="btn btn-outline btn-block order-type-btn" id="takeawayBtn" onclick="chooseOrderType('takeaway')">
-            🥡 ቴክ አዌይ / Take away
+            🥡 ይዞ መውሰድ / Take away
           </button>
-          <div class="order-type-hint">እዚሁ ከሆነ ትዕዛዝዎ ወዲያውኑ ይላካል<br>In house sends this straight to the kitchen — take away adds it to your cart</div>
+          <div class="order-type-hint">በቦታው ላይ ከሆነ ትዕዛዝዎ ወዲያውኑ ይላካል<br>In house sends this straight to the kitchen — take away adds it to your cart</div>
         </div>
       </div>
     </div>`;
@@ -1228,7 +1228,7 @@ function renderDineInOrderSuccess(item, orderCode, tableLabel){
     <div class="modal-overlay" onclick="if(event.target===this) navClose()">
       <div class="modal">
         <div class="modal-head">
-          <h3>ትዕዛዝዎ ተልኳል / Order sent</h3>
+          <h3>ትዕዛዝ ተልኳል / Order sent</h3>
           <button class="icon-btn" onclick="navClose()">✕</button>
         </div>
         <div class="modal-body">
@@ -2063,10 +2063,10 @@ function renderAdminBrand(){
               oninput="if(isValidHexColor(this.value)){ document.getElementById('brandColorSwatch').value = this.value; updateBrandInfo('color', this.value); }">
             <button type="button" class="btn btn-outline btn-sm" onclick="document.getElementById('brandColorSwatch').value='${DEFAULT_BRAND_COLOR}'; document.getElementById('brandColorHex').value='${DEFAULT_BRAND_COLOR}'; updateBrandInfo('color', '${DEFAULT_BRAND_COLOR}');">↺ ነባሪ / Reset</button>
           </div>
-          <div class="empty-admin-hint" style="text-align:left; padding:6px 0 0;">The layout and design stay the same, only the color changes.</div>
+          <div class="empty-admin-hint" style="text-align:left; padding:6px 0 0;">በአዝራሮች፣ ራስጌ እና ድምቀቶች ላይ ጥቅም ላይ ይውላል / Used for buttons, header, and highlights throughout the app — the layout and design stay the same, only the color changes.</div>
         </div>
       </div>
-      <div class="empty-admin-hint" style="text-align:left; padding:6px 0 0;">This shows in the header, footer, and browser tab.</div>
+      <div class="empty-admin-hint" style="text-align:left; padding:6px 0 0;">ይህ በራስጌ፣ በግርጌ እና በአሳሽ ትር ላይ ይታያል / This shows in the header, footer, and browser tab.</div>
       <button type="button" class="btn btn-primary btn-block" style="margin-top:14px;" onclick="saveBrandInfo(event)">💾 አስቀምጥ / Save</button>
     </div>`;
 }
@@ -2900,7 +2900,7 @@ function renderSingleOrderCard(o){
   const pillText = o.status === 'done' ? 'ተጠናቋል / Done' : 'አዲስ / New';
   const itemsLine = (o.items || []).map(it=>`${escapeHtml(it.name)} ×${it.qty}`).join(', ');
   const isDineIn = o.orderType === 'dine_in';
-  const dineInText = o.tableLabel ? `🍽️ ጠረጴዛ ${escapeHtml(o.tableLabel)}` : '🍽️ እዚሁ';
+  const dineInText = o.tableLabel ? `🍽️ ጠረጴዛ ${escapeHtml(o.tableLabel)}` : '🍽️ በቦታው';
   const typeBadge = `<span class="order-type-badge ${isDineIn ? 'dine-in' : 'takeaway'}">${isDineIn ? dineInText : '🥡 ይዞ መውሰድ'}</span>`;
   return `<div class="order-card ${doneCls}">
       <div class="order-card-head">
