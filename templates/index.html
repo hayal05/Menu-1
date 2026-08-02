@@ -688,6 +688,44 @@ let adminModeActive = false;
 let adminTab = 'categories';
 let adminPin = '';   // kept only in memory for this browser session, never stored
 
+/* ---- brand color: theming only, every gradient/shadow/pattern in the CSS keeps
+   referencing the same --orange/--orange-dark/--orange-light variables, so picking
+   a new color re-tints the existing design instead of changing its layout/texture ---- */
+const DEFAULT_BRAND_COLOR = '#E8672B';
+
+function hexToRgb(hex){
+  let h = String(hex||'').replace('#','');
+  if(h.length === 3) h = h.split('').map(c=>c+c).join('');
+  const num = parseInt(h, 16);
+  return { r:(num>>16)&255, g:(num>>8)&255, b:num&255 };
+}
+function rgbToHex(r,g,b){
+  const c = v => Math.max(0, Math.min(255, Math.round(v))).toString(16).padStart(2,'0');
+  return `#${c(r)}${c(g)}${c(b)}`;
+}
+// Shifts a hex color toward black (negative percent) or white (positive percent),
+// used to derive the existing --orange-dark / --orange-light gradient stops from
+// whatever base color the admin picks.
+function shadeHex(hex, percent){
+  const { r, g, b } = hexToRgb(hex);
+  const target = percent < 0 ? 0 : 255;
+  const p = Math.abs(percent);
+  return rgbToHex(r + (target - r) * p, g + (target - g) * p, b + (target - b) * p);
+}
+function isValidHexColor(hex){
+  return /^#[0-9a-fA-F]{6}$/.test(String(hex || ''));
+}
+// Applies the brand color to the same CSS variables the whole app's gradients,
+// buttons, and highlights already reference — no other CSS changes, so every
+// existing shape/gradient/shadow ("texture") is preserved, just re-tinted.
+function applyBrandColor(hex){
+  const color = isValidHexColor(hex) ? hex : DEFAULT_BRAND_COLOR;
+  const root = document.documentElement.style;
+  root.setProperty('--orange', color);
+  root.setProperty('--orange-dark', shadeHex(color, -0.18));
+  root.setProperty('--orange-light', shadeHex(color, 0.22));
+}
+
 /* ---- new-order push notification (admin mode only) ---- */
 let ordersPollTimer = null;
 let knownOrderIds = new Set();
@@ -902,6 +940,7 @@ function renderBrand(){
   const type = (state.brand && state.brand.type) || 'Restaurant & Coffee House';
   const footerText = (state.brand && state.brand.footerText) || 'SABA COFFEE · ADDIS ABABA';
   const profileImage = state.brand && state.brand.profileImage;
+  applyBrandColor(state.brand && state.brand.color);
   document.getElementById('brandNameText').textContent = name;
   document.getElementById('brandTypeText').textContent = type;
   document.getElementById('footBrandText').textContent = name;
@@ -2010,6 +2049,21 @@ function renderAdminBrand(){
         <div class="field-group">
           <label class="field-label">የግርጌ ጽሑፍ / Footer text</label>
           <input type="text" value="${escapeHtml(b.footerText||'')}" onchange="updateBrandInfo('footerText', this.value)" placeholder="e.g. SABA COFFEE · ADDIS ABABA">
+        </div>
+      </div>
+      <div class="field-row">
+        <div class="field-group">
+          <label class="field-label">የምርት ቀለም / Brand color</label>
+          <div style="display:flex; align-items:center; gap:10px; margin-top:4px; flex-wrap:wrap;">
+            <input type="color" id="brandColorSwatch" value="${escapeHtml(b.color || DEFAULT_BRAND_COLOR)}"
+              oninput="document.getElementById('brandColorHex').value = this.value; updateBrandInfo('color', this.value);"
+              style="width:52px; height:40px; padding:2px; border:2px solid rgba(61,32,21,0.15); border-radius:10px; cursor:pointer; background:#fff;">
+            <input type="text" id="brandColorHex" value="${escapeHtml(b.color || DEFAULT_BRAND_COLOR)}" maxlength="7" placeholder="#E8672B"
+              style="max-width:120px; font-family:monospace; text-transform:uppercase;"
+              oninput="if(isValidHexColor(this.value)){ document.getElementById('brandColorSwatch').value = this.value; updateBrandInfo('color', this.value); }">
+            <button type="button" class="btn btn-outline btn-sm" onclick="document.getElementById('brandColorSwatch').value='${DEFAULT_BRAND_COLOR}'; document.getElementById('brandColorHex').value='${DEFAULT_BRAND_COLOR}'; updateBrandInfo('color', '${DEFAULT_BRAND_COLOR}');">↺ ነባሪ / Reset</button>
+          </div>
+          <div class="empty-admin-hint" style="text-align:left; padding:6px 0 0;">በአዝራሮች፣ ራስጌ እና ድምቀቶች ላይ ጥቅም ላይ ይውላል / Used for buttons, header, and highlights throughout the app — the layout and design stay the same, only the color changes.</div>
         </div>
       </div>
       <div class="empty-admin-hint" style="text-align:left; padding:6px 0 0;">ይህ በራስጌ፣ በግርጌ እና በአሳሽ ትር ላይ ይታያል / This shows in the header, footer, and browser tab.</div>
