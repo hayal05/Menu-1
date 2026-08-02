@@ -69,6 +69,7 @@ DEFAULT_STATE = {
         "name": "Saba Coffee ‑ ሳባ ቡና",
         "type": "Restaurant & Coffee House",
         "footerText": "SABA COFFEE · ADDIS ABABA",
+        "profileImage": "",
     },
     "payment": {
         "bankName": "Commercial Bank of Ethiopia (CBE)",
@@ -76,6 +77,11 @@ DEFAULT_STATE = {
         "accountNumber": "1000000000000",
         "instructions": "Please transfer the total amount and upload a screenshot of your payment confirmation before submitting your order."
     },
+    # Physical tables the admin has generated a QR code for. Each QR points
+    # back at this site with ?table=<label> in the URL, so anything ordered
+    # after scanning it is auto-tagged with that table's label — no manual
+    # picking of "in house" needed at that point.
+    "tables": [],
     "categories": [
         {"id": "tsom", "name": "የጾም ምግቦች"},
         {"id": "fisk", "name": "የፍስክ ምግቦች"},
@@ -159,6 +165,12 @@ def init_db():
                 "verification_status TEXT DEFAULT 'unverified'",
                 "verification_data TEXT",
                 "public_code TEXT",
+                # 'dine_in' orders are placed directly from the menu (no cart/checkout
+                # form — see the "In house / Take away" prompt on the Add button).
+                # 'table_number' is left ready for the QR-per-table feature to come
+                # later; it's unused for now and always NULL.
+                "order_type TEXT NOT NULL DEFAULT 'takeaway'",
+                "table_number TEXT",
             ):
                 cur.execute(f"ALTER TABLE orders ADD COLUMN IF NOT EXISTS {col_def}")
             cur.execute(
@@ -186,6 +198,14 @@ def init_db():
                 # Migrate older saved menus that predate the brand.footerText field.
                 elif 'footerText' not in saved['brand']:
                     saved['brand']['footerText'] = DEFAULT_STATE['brand']['footerText']
+                    changed = True
+                # Migrate older saved menus that predate the brand.profileImage field.
+                if 'brand' in saved and 'profileImage' not in saved['brand']:
+                    saved['brand']['profileImage'] = DEFAULT_STATE['brand']['profileImage']
+                    changed = True
+                # Migrate older saved menus that predate the "tables" field (QR-per-table feature).
+                if 'tables' not in saved:
+                    saved['tables'] = DEFAULT_STATE['tables']
                     changed = True
                 if changed:
                     cur.execute(
@@ -254,10 +274,27 @@ def create_order():
     # customer's bank-transfer / payment confirmation screenshot.
     payment_screenshot = payload.get('paymentScreenshot')
 
-    if not name:
-        return jsonify({'error': 'name is required'}), 400
-    if not phone:
-        return jsonify({'error': 'phone is required'}), 400
+    order_type = str(payload.get('orderType', 'takeaway')).strip().lower()
+    if order_type not in ('takeaway', 'dine_in'):
+        order_type = 'takeaway'
+
+    # Only meaningful for dine-in orders: which table this came from, either
+    # scanned automatically from that table's QR code or typed in by hand.
+    table_label = str(payload.get('tableLabel', '') or '').strip()[:60] or None
+    if order_type != 'dine_in':
+        table_label = None
+
+    if order_type == 'dine_in':
+        # Dine-in orders are placed directly from the menu with no checkout
+        # form (see the "In house / Take away" prompt), so there's no name/phone
+        # to require yet — a per-table QR code will identify these orders later.
+        if not name:
+            name = 'የቤት ውስጥ ደንበኛ / In-house guest'
+    else:
+        if not name:
+            return jsonify({'error': 'name is required'}), 400
+        if not phone:
+            return jsonify({'error': 'phone is required'}), 400
     if not isinstance(items, list) or len(items) == 0:
         return jsonify({'error': 'order must include at least one item'}), 400
 
@@ -281,11 +318,12 @@ def create_order():
             order_code = generate_order_code(cur)
             cur.execute(
                 "INSERT INTO orders (customer_name, phone, items, total, status, created_at, "
-                "payment_screenshot, public_code) VALUES (%s, %s, %s, %s, 'new', %s, %s, %s) "
+                "payment_screenshot, public_code, order_type, table_number) VALUES "
+                "(%s, %s, %s, %s, 'new', %s, %s, %s, %s, %s) "
                 "RETURNING id",
                 (
                     name, phone, psycopg2.extras.Json(items), total,
-                    datetime.now(timezone.utc), payment_screenshot, order_code,
+                    datetime.now(timezone.utc), payment_screenshot, order_code, order_type, table_label,
                 ),
             )
             order_id = cur.fetchone()['id']
@@ -295,6 +333,8 @@ def create_order():
         'ok': True,
         'orderId': order_id,
         'orderCode': order_code,
+        'orderType': order_type,
+        'tableLabel': table_label,
         'total': total,
     })
 
@@ -321,6 +361,8 @@ def list_orders():
             'status': r['status'],
             'createdAt': r['created_at'].isoformat(),
             'paymentScreenshot': r['payment_screenshot'],
+            'orderType': r.get('order_type') or 'takeaway',
+            'tableLabel': r.get('table_number'),
         }
         for r in rows
     ]
@@ -352,6 +394,8 @@ def order_status_by_code(code):
         'total': float(row['total']),
         'status': row['status'],
         'createdAt': row['created_at'].isoformat(),
+        'orderType': row.get('order_type') or 'takeaway',
+        'tableLabel': row.get('table_number'),
     })
 
 
