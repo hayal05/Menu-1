@@ -37,7 +37,7 @@
   .spinner-cup.spinner-dark{ color:var(--orange); }
   .spinner-cup.sm{ width:18px; height:18px; }
   .spinner-cup.md{ width:28px; height:28px; margin-right:0; }
-  .spinner-cup.lg{ width:38px; height:38px; margin-right:0; }
+  .spinner-cup.lg{ width:190px; height:190px; margin-right:0; }
   .spinner-cup .cup-outline{ fill:none; stroke:currentColor; stroke-width:1.6; stroke-linecap:round; stroke-linejoin:round; }
   .spinner-cup .steam{ stroke:currentColor; stroke-width:1.6; stroke-linecap:round; fill:none; opacity:0; transform-origin:12px 20px; animation:steamRise 1.3s ease-in-out infinite; }
   .spinner-cup .steam.s2{ animation-delay:.22s; }
@@ -56,7 +56,7 @@
   }
   .spinner-logo.sm{ width:18px; height:18px; }
   .spinner-logo.md{ width:28px; height:28px; margin-right:0; }
-  .spinner-logo.lg{ width:38px; height:38px; margin-right:0; }
+  .spinner-logo.lg{ width:190px; height:190px; margin-right:0; }
   @keyframes spinnerLogoSpin{ from{ transform:rotate(0deg); } to{ transform:rotate(360deg); } }
   .btn[disabled]{ opacity:0.85; cursor:wait; pointer-events:none; }
   .loading-block{
@@ -284,6 +284,21 @@
   }
   .table-number-input:focus{ border-color:var(--orange); }
 
+  .table-detected-card{
+    display:flex; align-items:center; gap:12px; background:#F3FBF4; border:2px solid rgba(46,145,79,0.25);
+    border-radius:14px; padding:14px 16px; margin-bottom:16px;
+  }
+  .table-detected-check{
+    flex-shrink:0; width:34px; height:34px; border-radius:50%; background:#2E914F; color:#fff;
+    display:flex; align-items:center; justify-content:center; font-size:17px;
+  }
+  .table-detected-num{ font-weight:700; font-size:15px; color:var(--ink); }
+  .table-detected-sub{ font-size:12px; color:var(--muted); margin-top:2px; }
+  .table-manual-toggle{
+    display:block; width:100%; text-align:center; background:none; border:none; color:var(--muted);
+    font-size:12.5px; text-decoration:underline; padding:10px 0 2px; cursor:pointer; font-family:inherit;
+  }
+
   /* ---------- admin: tables / QR codes ---------- */
   .table-card{
     display:flex; align-items:center; gap:14px; background:#fff; border-radius:16px; padding:14px;
@@ -326,6 +341,14 @@
   .order-card-foot{ display:flex; justify-content:space-between; align-items:center; margin-top:10px; }
   .order-card-total{ font-weight:700; font-size:14px; color:var(--orange-dark); }
   .order-card-actions{ display:flex; gap:6px; }
+
+  .order-card.is-bundle{ border-left-color:#2E5EA6; }
+  .order-card.is-bundle.is-done{ border-left-color:#8fae7a; }
+  .order-bundle-count{
+    font-weight:700; font-size:11px; color:#2E5EA6; background:#E9F0FB;
+    border-radius:6px; padding:1px 6px; letter-spacing:0.2px; margin-left:4px; white-space:nowrap;
+  }
+  .order-bundle-codes{ font-size:11px; color:var(--muted); margin-top:2px; }
 
   /* ---------- hamburger sidebar drawer ---------- */
   .sidebar-overlay{
@@ -936,10 +959,11 @@ window.addToCart = addToCart;
      Take away -> completely conventional: goes into the persistent cart,
                   checkout later through the normal cart/checkout form,
                   table info is never sent or asked for.
-     In house  -> asks for a table number (pre-filled automatically if the
-                  customer scanned a table's QR, otherwise typed by hand),
-                  then sends that single item straight to the kitchen with
-                  the table number attached, skipping the cart/checkout form. */
+     In house  -> if a table was scanned, it's auto-detected and the order
+                  goes straight to the kitchen with one confirm tap — no
+                  typing. If no table was scanned (or the customer says the
+                  detected one is wrong), falls back to a manual number
+                  field, still skipping the cart/checkout form. */
 let activeTableLabel = null;
 const orderTypeModalRoot = () => document.getElementById('modalRoot');
 let pendingOrderTypeItemId = null;
@@ -1030,14 +1054,50 @@ function chooseOrderType(type){
 }
 window.chooseOrderType = chooseOrderType;
 
-function renderTableNumberStep(itemId){
+function renderTableNumberStep(itemId, forceManual){
   const item = state.items.find(i=>i.id===itemId);
   const root = orderTypeModalRoot();
   if(!item || !root){ navClose(); return; }
 
-  // If this visit started from a table's QR code, pre-fill (but still let
-  // them correct it) instead of making them type it in again.
-  const prefill = activeTableLabel || '';
+  // If this visit started from a table's QR code, the table is already
+  // known — skip typing entirely and just confirm it. Only fall back to a
+  // manual field if no table was detected, or the customer says it's wrong.
+  const detected = activeTableLabel || '';
+  const showManual = forceManual || !detected;
+
+  if(!showManual){
+    root.innerHTML = `
+      <div class="modal-overlay" onclick="if(event.target===this) navClose()">
+        <div class="modal">
+          <div class="modal-head">
+            <div class="modal-head-left">
+              <button class="icon-btn" onclick="renderOrderTypeModal('${itemId}')" title="ተመለስ / Back">←</button>
+              <h3>የጠረጴዛ ቁጥር / Table number</h3>
+            </div>
+            <button class="icon-btn" onclick="navClose()">✕</button>
+          </div>
+          <div class="modal-body">
+            <div class="order-type-item-preview">
+              <div class="item-icon">${itemIconHtml(item)}</div>
+              <div>
+                <div class="cart-line-name">${escapeHtml(item.name)}</div>
+                <div class="cart-line-price">${Number(item.price).toLocaleString()} ብር</div>
+              </div>
+            </div>
+            <div class="table-detected-card">
+              <div class="table-detected-check">✓</div>
+              <div>
+                <div class="table-detected-num">ጠረጴዛ ${escapeHtml(detected)} ተገኝቷል / Table ${escapeHtml(detected)} detected</div>
+                <div class="table-detected-sub">የጠረጴዛዎን QR ኮድ ስለቃኙ / From your table's QR code</div>
+              </div>
+            </div>
+            <button class="btn btn-primary btn-block order-type-btn" id="dineInConfirmBtn" onclick="confirmDetectedTable('${itemId}')">✅ ትዕዛዝ ላክ / Send order</button>
+            <button type="button" class="table-manual-toggle" onclick="renderTableNumberStep('${itemId}', true)">ይህ ትክክል አይደለም? በእጅ ያስገቡ / Not your table? Enter manually</button>
+          </div>
+        </div>
+      </div>`;
+    return;
+  }
 
   root.innerHTML = `
     <div class="modal-overlay" onclick="if(event.target===this) navClose()">
@@ -1058,17 +1118,24 @@ function renderTableNumberStep(itemId){
             </div>
           </div>
           <label class="field-label">በአሁኑ ጠረጴዛዎ ላይ ያለውን ቁጥር ያስገቡ / Enter the number on your table</label>
-          <input type="text" class="table-number-input" id="manualTableInput" placeholder="e.g. 5" autocomplete="off" value="${escapeHtml(prefill)}">
-          ${prefill ? `<div class="order-type-hint" style="margin-top:-6px;">የጠረጴዛዎን QR ስለቃኙ በራስ-ሰር ተሞልቷል — ካልተሳካ ያስተካክሉ<br>Auto-filled from your table's QR code — edit it if it's wrong</div>` : ''}
+          <input type="text" class="table-number-input" id="manualTableInput" placeholder="e.g. 5" autocomplete="off" value="">
           <div class="order-error" id="tableNumberError" style="color:#B23A2B;font-size:12.5px;min-height:16px;margin:4px 0 8px;"></div>
           <button class="btn btn-primary btn-block order-type-btn" id="dineInConfirmBtn" onclick="confirmDineInWithTable('${itemId}')">✅ ትዕዛዝ ላክ / Send order</button>
+          ${detected ? `<button type="button" class="table-manual-toggle" onclick="renderTableNumberStep('${itemId}')">🔍 ጠረጴዛ ${escapeHtml(detected)} ተገኝቷል — ይህን ተጠቀም / Table ${escapeHtml(detected)} detected — use it instead</button>` : ''}
         </div>
       </div>
     </div>`;
   const inp = document.getElementById('manualTableInput');
-  if(inp){ inp.focus(); if(prefill) inp.select(); }
+  if(inp) inp.focus();
 }
 window.renderTableNumberStep = renderTableNumberStep;
+
+async function confirmDetectedTable(itemId){
+  const item = state.items.find(i=>i.id===itemId);
+  if(!item) return;
+  await submitDineInOrder(item, activeTableLabel || '', document.getElementById('dineInConfirmBtn'));
+}
+window.confirmDetectedTable = confirmDetectedTable;
 
 async function confirmDineInWithTable(itemId){
   const item = state.items.find(i=>i.id===itemId);
@@ -1085,6 +1152,7 @@ window.confirmDineInWithTable = confirmDineInWithTable;
 async function submitDineInOrder(item, tableLabel, btnEl){
   const takeawayBtn = document.getElementById('takeawayBtn');
   if(takeawayBtn) takeawayBtn.disabled = true;
+  const t0 = performance.now();
   if(btnEl) setBtnLoading(btnEl, 'በማዘዝ ላይ... / Placing order...');
 
   try{
@@ -1103,12 +1171,14 @@ async function submitDineInOrder(item, tableLabel, btnEl){
       throw new Error(data.error || ('POST /api/orders failed: ' + res.status));
     }
     const data = await res.json();
+    const ms = btnEl ? clearBtnLoading(btnEl) : Math.round(performance.now() - t0);
+    showToast(`ትዕዛዝ ተልኳል ✓ Order sent (${fmtMs(ms)})`);
     navReplaceTop(()=>renderDineInOrderSuccess(item, data.orderCode, tableLabel), closeOrderTypeModal, 'modalRoot');
   }catch(e){
+    const ms = btnEl ? clearBtnLoading(btnEl) : Math.round(performance.now() - t0);
     console.error('Dine-in order error', e);
-    showToast('ትዕዛዝ መላክ አልተሳካም / Could not place order — please try again');
+    showToast(`ትዕዛዝ መላክ አልተሳካም / Could not place order (${fmtMs(ms)}) — please try again`);
     if(takeawayBtn) takeawayBtn.disabled = false;
-    if(btnEl) clearBtnLoading(btnEl);
   }
 }
 
@@ -1354,16 +1424,28 @@ function spinnerCup(size, dark){
 function setBtnLoading(btnEl, loadingLabel){
   if(!btnEl) return;
   if(btnEl.dataset.origLabel === undefined) btnEl.dataset.origLabel = btnEl.innerHTML;
+  btnEl.dataset.loadStart = String(performance.now());
   btnEl.disabled = true;
   btnEl.innerHTML = `${spinnerCup('sm')}${loadingLabel}`;
 }
+// Restores the button to its pre-loading label and returns how long it spent
+// in the loading state (ms) so callers can surface the response time.
 function clearBtnLoading(btnEl){
-  if(!btnEl) return;
+  if(!btnEl) return 0;
   btnEl.disabled = false;
+  const start = Number(btnEl.dataset.loadStart || 0);
+  const ms = start ? Math.round(performance.now() - start) : 0;
   if(btnEl.dataset.origLabel !== undefined){
     btnEl.innerHTML = btnEl.dataset.origLabel;
     delete btnEl.dataset.origLabel;
   }
+  delete btnEl.dataset.loadStart;
+  return ms;
+}
+// Formats a millisecond duration for display next to a result, e.g. "312ms" / "1.4s"
+function fmtMs(ms){
+  if(!Number.isFinite(ms) || ms < 0) ms = 0;
+  return ms < 1000 ? `${ms}ms` : `${(ms/1000).toFixed(1)}s`;
 }
 
 function handleProfileImageChange(event){
@@ -1464,6 +1546,7 @@ async function submitOrder(event){
   errEl.textContent = '';
   const submitBtn = event && event.currentTarget ? event.currentTarget : document.querySelector('[onclick^="submitOrder("]');
   setBtnLoading(submitBtn, 'በመላክ ላይ... / Submitting...');
+  let orderResult = null;
   try{
     const res = await fetch('/api/orders', {
       method: 'POST',
@@ -1474,17 +1557,22 @@ async function submitOrder(event){
       const data = await res.json().catch(()=>({}));
       throw new Error(data.error || ('POST /api/orders failed: ' + res.status));
     }
-    const data = await res.json();
+    orderResult = await res.json();
     cart = {};
     paymentScreenshotData = null;
     renderMenu();
     renderCartFab();
-    navReplaceTop(()=>renderOrderSuccess(name, data.orderCode), closeCart, 'cartModalRoot');
   }catch(e){
     console.error('Order submit error', e);
     errEl.textContent = 'ትዕዛዝ መላክ አልተሳካም / Could not submit order — please try again';
   }finally{
-    clearBtnLoading(submitBtn);
+    const ms = clearBtnLoading(submitBtn);
+    if(orderResult){
+      showToast(`ትዕዛዝ ተልኳል ✓ Order sent (${fmtMs(ms)})`);
+      navReplaceTop(()=>renderOrderSuccess(name, orderResult.orderCode), closeCart, 'cartModalRoot');
+    } else if(errEl.textContent){
+      errEl.textContent += ` (${fmtMs(ms)})`;
+    }
   }
 }
 window.submitOrder = submitOrder;
@@ -1702,16 +1790,17 @@ async function checkOrderStatus(event){
   try{
     const res = await fetch('/api/orders/status/' + encodeURIComponent(val));
     const data = await res.json().catch(()=>null);
+    const ms = clearBtnLoading(checkBtn);
     if(!res.ok){
-      renderOrderStatusModal(null, val, (data && data.error) || 'ትዕዛዝ ማረጋገጥ አልተሳካም / Could not check status');
+      renderOrderStatusModal(null, val, `${(data && data.error) || 'ትዕዛዝ ማረጋገጥ አልተሳካም / Could not check status'} (${fmtMs(ms)})`);
       return;
     }
+    showToast(`ተገኝቷል ✓ Found (${fmtMs(ms)})`);
     renderOrderStatusModal(data, val);
   }catch(e){
+    const ms = clearBtnLoading(checkBtn);
     console.error('Order status check failed', e);
-    renderOrderStatusModal(null, val, 'ሰርቨሩ ላይ መድረስ አልተቻለም / Could not reach server');
-  }finally{
-    clearBtnLoading(checkBtn);
+    renderOrderStatusModal(null, val, `ሰርቨሩ ላይ መድረስ አልተቻለም / Could not reach server (${fmtMs(ms)})`);
   }
 }
 window.checkOrderStatus = checkOrderStatus;
@@ -1822,6 +1911,8 @@ async function checkPin(){
   const val = document.getElementById('pinInput').value;
   const errEl = document.getElementById('pinError');
   errEl.textContent = '';
+  const btn = document.querySelector('[onclick^="checkPin("]');
+  setBtnLoading(btn, 'በመግባት ላይ... / Logging in...');
   try{
     const res = await fetch('/api/admin/verify', {
       method: 'POST',
@@ -1829,9 +1920,11 @@ async function checkPin(){
       body: JSON.stringify({ pin: val })
     });
     const data = await res.json();
+    const ms = clearBtnLoading(btn);
     if(data && data.ok){
       adminPin = val;
       isAuthenticated = true;
+      showToast(`ገብተዋል ✓ Logged in (${fmtMs(ms)})`);
       if(adminModeActive){
         // Re-auth prompt shown on top of an already-open admin panel — just
         // dismiss it, the panel underneath never went anywhere.
@@ -1842,11 +1935,12 @@ async function checkPin(){
         navReplaceTop(enterAdminModeNav, exitAdminModeNav, 'adminView');
       }
     } else {
-      errEl.textContent = 'ትክክል ያልሆነ ፒን / Incorrect PIN';
+      errEl.textContent = `ትክክል ያልሆነ ፒን / Incorrect PIN (${fmtMs(ms)})`;
     }
   }catch(e){
+    const ms = clearBtnLoading(btn);
     console.error('PIN check error', e);
-    errEl.textContent = 'ሰርቨሩ ላይ መድረስ አልተቻለም / Could not reach server';
+    errEl.textContent = `ሰርቨሩ ላይ መድረስ አልተቻለም / Could not reach server (${fmtMs(ms)})`;
   }
 }
 window.checkPin = checkPin;
@@ -1933,13 +2027,10 @@ window.updateBrandInfo = updateBrandInfo;
 
 async function saveBrandInfo(event){
   const btn = event && event.target;
-  if(btn){ btn.disabled = true; btn.textContent = 'በማስቀመጥ ላይ… / Saving…'; }
-  const ok = await saveData();
-  if(btn){
-    btn.disabled = false;
-    btn.textContent = ok ? '✅ ተቀምጧል / Saved' : '💾 አስቀምጥ / Save';
-    if(ok) setTimeout(()=>{ btn.textContent = '💾 አስቀምጥ / Save'; }, 1500);
-  }
+  if(btn) setBtnLoading(btn, 'በማስቀመጥ ላይ… / Saving…');
+  const ok = await saveData(false);
+  const ms = btn ? clearBtnLoading(btn) : 0;
+  showToast(ok ? `ተቀምጧል ✓ Saved (${fmtMs(ms)})` : `ማስቀመጥ አልተሳካም / Save failed (${fmtMs(ms)})`);
 }
 window.saveBrandInfo = saveBrandInfo;
 
@@ -1986,13 +2077,10 @@ window.updatePaymentInfo = updatePaymentInfo;
 
 async function savePaymentInfo(event){
   const btn = event && event.target;
-  if(btn){ btn.disabled = true; btn.textContent = 'በማስቀመጥ ላይ… / Saving…'; }
-  const ok = await saveData();
-  if(btn){
-    btn.disabled = false;
-    btn.textContent = ok ? '✅ ተቀምጧል / Saved' : '💾 አስቀምጥ / Save';
-    if(ok) setTimeout(()=>{ btn.textContent = '💾 አስቀምጥ / Save'; }, 1500);
-  }
+  if(btn) setBtnLoading(btn, 'በማስቀመጥ ላይ… / Saving…');
+  const ok = await saveData(false);
+  const ms = btn ? clearBtnLoading(btn) : 0;
+  showToast(ok ? `ተቀምጧል ✓ Saved (${fmtMs(ms)})` : `ማስቀመጥ አልተሳካም / Save failed (${fmtMs(ms)})`);
 }
 window.savePaymentInfo = savePaymentInfo;
 
@@ -2023,7 +2111,7 @@ function renderAdminTables(){
         <div class="table-card-url">${escapeHtml(tableOrderUrl(t.label))}</div>
         <div class="table-card-actions">
           <a class="btn btn-outline btn-sm" href="${tableQrImageUrl(t.label, 900)}" download="table-${encodeURIComponent(t.label)}-qr.png" target="_blank" rel="noopener">⬇️ አውርድ / Download</a>
-          <button class="btn btn-danger btn-sm" onclick="deleteTable('${t.id}')">አጥፋ / Delete</button>
+          <button class="btn btn-danger btn-sm" onclick="deleteTable('${t.id}', event)">አጥፋ / Delete</button>
         </div>
       </div>
     </div>`).join('');
@@ -2068,7 +2156,7 @@ function tableLabelExists(label){
   return (state.tables || []).some(t => t.label.trim().toLowerCase() === norm);
 }
 
-function addTable(){
+async function addTable(){
   const input = document.getElementById('newTableLabel');
   const label = (input.value || '').trim();
   if(!label){ showToast('እባክዎ የጠረጴዛ ስም ያስገቡ / Please enter a table label'); return; }
@@ -2076,12 +2164,16 @@ function addTable(){
   if(tableLabelExists(label)){ showToast('ይህ ጠረጴዛ አስቀድሞ አለ / That table already exists'); return; }
   if(!state.tables) state.tables = [];
   state.tables.push({ id: uid('table'), label });
-  saveData();
+  const btn = document.querySelector('[onclick^="addTable("]');
+  if(btn) setBtnLoading(btn, 'በማስቀመጥ ላይ… / Saving…');
+  const ok = await saveData(false);
+  const ms = btn ? clearBtnLoading(btn) : 0;
+  showToast(ok ? `ጠረጴዛ ታክሏል ✓ Table added (${fmtMs(ms)})` : `ማስቀመጥ አልተሳካም / Save failed (${fmtMs(ms)})`);
   renderAdminContent();
 }
 window.addTable = addTable;
 
-function quickAddTables(){
+async function quickAddTables(){
   const from = parseInt(document.getElementById('quickTableFrom').value, 10);
   const to = parseInt(document.getElementById('quickTableTo').value, 10);
   if(!Number.isFinite(from) || !Number.isFinite(to) || from < 1 || to < from){
@@ -2102,15 +2194,23 @@ function quickAddTables(){
     }
   }
   if(added === 0){ showToast('እነዚህ ጠረጴዛዎች አስቀድሞ አሉ / Those tables already exist'); return; }
-  saveData();
+  const btn = document.querySelector('[onclick^="quickAddTables("]');
+  if(btn) setBtnLoading(btn, 'በማስቀመጥ ላይ… / Saving…');
+  const ok = await saveData(false);
+  const ms = btn ? clearBtnLoading(btn) : 0;
+  showToast(ok ? `${added} ጠረጴዛዎች ታክለዋል ✓ ${added} tables added (${fmtMs(ms)})` : `ማስቀመጥ አልተሳካም / Save failed (${fmtMs(ms)})`);
   renderAdminContent();
 }
 window.quickAddTables = quickAddTables;
 
-function deleteTable(id){
+async function deleteTable(id, event){
   if(!confirm('ይህን የጠረጴዛ QR ማጥፋት ይፈልጋሉ?')) return;
   state.tables = (state.tables || []).filter(t => t.id !== id);
-  saveData();
+  const btn = event && event.currentTarget;
+  if(btn) setBtnLoading(btn, 'በማጥፋት ላይ… / Deleting…');
+  const ok = await saveData(false);
+  const ms = btn ? clearBtnLoading(btn) : 0;
+  showToast(ok ? `ጠፍቷል ✓ Deleted (${fmtMs(ms)})` : `ማጥፋት አልተሳካም / Delete failed (${fmtMs(ms)})`);
   renderAdminContent();
 }
 window.deleteTable = deleteTable;
@@ -2128,7 +2228,7 @@ function renderAdminCategories(){
       </div>
       <div class="admin-item-row">
         <span style="font-size:12px;color:var(--muted);">${itemCount} ምግቦች</span>
-        <button class="btn btn-danger btn-sm" onclick="deleteCategory('${c.id}')">አጥፋ / Delete</button>
+        <button class="btn btn-danger btn-sm" onclick="deleteCategory('${c.id}', event)">አጥፋ / Delete</button>
       </div>
     </div>`;
   }).join('');
@@ -2158,7 +2258,7 @@ function renameCategory(id, newName){
 }
 window.renameCategory = renameCategory;
 
-function deleteCategory(id){
+async function deleteCategory(id, event){
   const itemCount = state.items.filter(i=>i.categoryId===id).length;
   const msg = itemCount > 0
     ? `ይህ ምድብ ${itemCount} ምግቦችን ይዟል። ምድቡን ማጥፋት እነዚህንም ምግቦች ያጠፋል። እርግጠኛ ነዎት?`
@@ -2169,20 +2269,28 @@ function deleteCategory(id){
   if(activeCategory === id){
     activeCategory = state.categories[0] ? state.categories[0].id : null;
   }
-  saveData();
+  const btn = event && event.currentTarget;
+  if(btn) setBtnLoading(btn, 'በማጥፋት ላይ… / Deleting…');
+  const ok = await saveData(false);
+  const ms = btn ? clearBtnLoading(btn) : 0;
+  showToast(ok ? `ምድብ ጠፍቷል ✓ Deleted (${fmtMs(ms)})` : `ማጥፋት አልተሳካም / Delete failed (${fmtMs(ms)})`);
   renderAll();
   renderAdminContent();
 }
 window.deleteCategory = deleteCategory;
 
-function addCategory(){
+async function addCategory(){
   const input = document.getElementById('newCatName');
   const name = input.value.trim();
   if(!name){ showToast('እባክዎ ስም ያስገቡ'); return; }
   const newCat = { id: uid('cat'), name };
   state.categories.push(newCat);
   if(!activeCategory) activeCategory = newCat.id;
-  saveData();
+  const btn = document.querySelector('[onclick^="addCategory("]');
+  if(btn) setBtnLoading(btn, 'በማስቀመጥ ላይ… / Saving…');
+  const ok = await saveData(false);
+  const ms = btn ? clearBtnLoading(btn) : 0;
+  showToast(ok ? `ምድብ ታክሏል ✓ Category added (${fmtMs(ms)})` : `ማስቀመጥ አልተሳካም / Save failed (${fmtMs(ms)})`);
   renderAll();
   renderAdminContent();
 }
@@ -2249,7 +2357,7 @@ function renderAdminItems(){
             <input type="checkbox" ${it.available!==false?'checked':''} onchange="updateItem('${it.id}','available',this.checked)">
             ይገኛል / Available
           </label>
-          <button class="btn btn-danger btn-sm" onclick="deleteItem('${it.id}')">አጥፋ / Delete</button>
+          <button class="btn btn-danger btn-sm" onclick="deleteItem('${it.id}', event)">አጥፋ / Delete</button>
         </div>
       </div>
     `).join('');
@@ -2414,16 +2522,20 @@ function updateItem(id, field, value){
 }
 window.updateItem = updateItem;
 
-function deleteItem(id){
+async function deleteItem(id, event){
   if(!confirm('ይህን ምግብ ማጥፋት ይፈልጋሉ?')) return;
   state.items = state.items.filter(i=>i.id!==id);
-  saveData();
+  const btn = event && event.currentTarget;
+  if(btn) setBtnLoading(btn, 'በማጥፋት ላይ… / Deleting…');
+  const ok = await saveData(false);
+  const ms = btn ? clearBtnLoading(btn) : 0;
+  showToast(ok ? `ምግብ ጠፍቷል ✓ Deleted (${fmtMs(ms)})` : `ማጥፋት አልተሳካም / Delete failed (${fmtMs(ms)})`);
   renderAll();
   renderAdminContent();
 }
 window.deleteItem = deleteItem;
 
-function addItem(){
+async function addItem(){
   const name = document.getElementById('newItemName').value.trim();
   const nameEn = document.getElementById('newItemNameEn').value.trim();
   const price = parseFloat(document.getElementById('newItemPrice').value) || 0;
@@ -2436,7 +2548,11 @@ function addItem(){
 
   state.items.push({ id: uid('i'), categoryId, name, nameEn, price, desc, icon:'', image, available:true });
   newItemImageData = null;
-  saveData();
+  const btn = document.querySelector('[onclick^="addItem("]');
+  if(btn) setBtnLoading(btn, 'በማስቀመጥ ላይ… / Saving…');
+  const ok = await saveData(false);
+  const ms = btn ? clearBtnLoading(btn) : 0;
+  showToast(ok ? `ምግብ ታክሏል ✓ Item added (${fmtMs(ms)})` : `ማስቀመጥ አልተሳካም / Save failed (${fmtMs(ms)})`);
   renderAll();
   renderAdminContent();
 }
@@ -2594,6 +2710,109 @@ async function loadOrders(){
   }
 }
 
+// Groups orders for display: active (not-yet-done) dine-in orders that
+// share a table are bundled into one entry, since a table usually adds
+// items one at a time and staff want to see everything for that table at
+// once. Everything else (takeaway orders, dine-in orders with no table,
+// and anything already marked done) stays as its own individual entry, so
+// history/audit view still shows every order separately.
+function groupOrdersForDisplay(orders){
+  const result = [];
+  const bundleByTable = new Map();
+
+  orders.forEach(o=>{
+    const bundleable = o.orderType === 'dine_in' && o.status !== 'done' && o.tableLabel;
+    if(bundleable){
+      const existing = bundleByTable.get(o.tableLabel);
+      if(existing){
+        existing.orders.push(o);
+        return;
+      }
+      const bundle = { type:'bundle', tableLabel:o.tableLabel, orders:[o] };
+      bundleByTable.set(o.tableLabel, bundle);
+      result.push(bundle);
+    } else {
+      result.push({ type:'single', order:o });
+    }
+  });
+
+  return result;
+}
+
+// Combines items across every order in a table bundle, merging identical
+// items (same name + price) into a single line with a summed quantity.
+function mergeBundleItems(orders){
+  const map = new Map();
+  orders.forEach(o=>{
+    (o.items || []).forEach(it=>{
+      const key = it.name + '|' + it.price;
+      const existing = map.get(key);
+      if(existing) existing.qty += (it.qty || 1);
+      else map.set(key, { name: it.name, price: it.price, qty: it.qty || 1 });
+    });
+  });
+  return Array.from(map.values());
+}
+
+async function setOrdersStatusBulk(orderIds, status, event){
+  const btn = event && event.currentTarget;
+  if(btn) setBtnLoading(btn, 'በማጠናቀቅ ላይ… / Updating…');
+  try{
+    const results = await Promise.all(orderIds.map(id => fetch('/api/orders/' + id, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json', 'X-Admin-Pin': adminPin },
+      body: JSON.stringify({ status })
+    })));
+    if(results.some(r=>r.status === 401)){
+      isAuthenticated = false;
+      if(btn) clearBtnLoading(btn);
+      showToast('ፒን ትክክል አይደለም / Not authorized');
+      renderAdminModal();
+      return;
+    }
+    if(results.some(r=>!r.ok)) throw new Error('one or more PATCH /api/orders failed');
+    const ms = btn ? clearBtnLoading(btn) : 0;
+    showToast(`ተዘምኗል ✓ Updated (${fmtMs(ms)})`);
+    loadOrders();
+  }catch(e){
+    const ms = btn ? clearBtnLoading(btn) : 0;
+    console.error('Bulk update orders error', e);
+    showToast(`ማዘመን አልተሳካም / Update failed (${fmtMs(ms)})`);
+  }
+}
+window.setOrdersStatusBulk = setOrdersStatusBulk;
+
+async function deleteOrdersBulk(orderIds, event){
+  const msg = orderIds.length === 1
+    ? 'ይህን ትዕዛዝ ማጥፋት ይፈልጋሉ?'
+    : `ይህን ጠረጴዛ ${orderIds.length} ትዕዛዞችን በሙሉ ማጥፋት ይፈልጋሉ? / Delete all ${orderIds.length} orders for this table?`;
+  if(!confirm(msg)) return;
+  const btn = event && event.currentTarget;
+  if(btn) setBtnLoading(btn, 'በማጥፋት ላይ… / Deleting…');
+  try{
+    const results = await Promise.all(orderIds.map(id => fetch('/api/orders/' + id, {
+      method: 'DELETE',
+      headers: { 'X-Admin-Pin': adminPin }
+    })));
+    if(results.some(r=>r.status === 401)){
+      isAuthenticated = false;
+      if(btn) clearBtnLoading(btn);
+      showToast('ፒን ትክክል አይደለም / Not authorized');
+      renderAdminModal();
+      return;
+    }
+    if(results.some(r=>!r.ok)) throw new Error('one or more DELETE /api/orders failed');
+    const ms = btn ? clearBtnLoading(btn) : 0;
+    showToast(`ጠፍተዋል ✓ Deleted (${fmtMs(ms)})`);
+    loadOrders();
+  }catch(e){
+    const ms = btn ? clearBtnLoading(btn) : 0;
+    console.error('Bulk delete orders error', e);
+    showToast(`ማጥፋት አልተሳካም / Delete failed (${fmtMs(ms)})`);
+  }
+}
+window.deleteOrdersBulk = deleteOrdersBulk;
+
 function renderOrdersList(orders){
   const el = document.getElementById('adminContent');
   if(!el || adminTab !== 'orders') return;
@@ -2603,15 +2822,19 @@ function renderOrdersList(orders){
     return;
   }
 
-  el.innerHTML = orders.map(o=>{
-    const doneCls = o.status === 'done' ? 'is-done' : '';
-    const pillCls = o.status === 'done' ? 'done' : '';
-    const pillText = o.status === 'done' ? 'ተጠናቋል / Done' : 'አዲስ / New';
-    const itemsLine = (o.items || []).map(it=>`${escapeHtml(it.name)} ×${it.qty}`).join(', ');
-    const isDineIn = o.orderType === 'dine_in';
-    const dineInText = o.tableLabel ? `🍽️ ጠረጴዛ ${escapeHtml(o.tableLabel)}` : '🍽️ በቦታው';
-    const typeBadge = `<span class="order-type-badge ${isDineIn ? 'dine-in' : 'takeaway'}">${isDineIn ? dineInText : '🥡 ይዞ መውሰድ'}</span>`;
-    return `<div class="order-card ${doneCls}">
+  const grouped = groupOrdersForDisplay(orders);
+  el.innerHTML = grouped.map(entry => entry.type === 'bundle' ? renderOrderBundleCard(entry) : renderSingleOrderCard(entry.order)).join('');
+}
+
+function renderSingleOrderCard(o){
+  const doneCls = o.status === 'done' ? 'is-done' : '';
+  const pillCls = o.status === 'done' ? 'done' : '';
+  const pillText = o.status === 'done' ? 'ተጠናቋል / Done' : 'አዲስ / New';
+  const itemsLine = (o.items || []).map(it=>`${escapeHtml(it.name)} ×${it.qty}`).join(', ');
+  const isDineIn = o.orderType === 'dine_in';
+  const dineInText = o.tableLabel ? `🍽️ ጠረጴዛ ${escapeHtml(o.tableLabel)}` : '🍽️ በቦታው';
+  const typeBadge = `<span class="order-type-badge ${isDineIn ? 'dine-in' : 'takeaway'}">${isDineIn ? dineInText : '🥡 ይዞ መውሰድ'}</span>`;
+  return `<div class="order-card ${doneCls}">
       <div class="order-card-head">
         <div>
           <div class="order-card-name">${escapeHtml(o.name)} ${o.code ? `<span class="order-card-code">#${escapeHtml(o.code)}</span>` : ''} ${typeBadge}</div>
@@ -2631,17 +2854,53 @@ function renderOrdersList(orders){
         <div class="order-card-total">${Number(o.total).toLocaleString()} ብር</div>
         <div class="order-card-actions">
           ${o.status === 'done'
-            ? `<button class="btn btn-outline btn-sm" onclick="setOrderStatus(${o.id}, 'new')">↺ አዲስ አድርግ</button>`
-            : `<button class="btn btn-primary btn-sm" onclick="setOrderStatus(${o.id}, 'done')">✓ ተጠናቋል</button>`}
-          <button class="btn btn-danger btn-sm" onclick="deleteOrder(${o.id})">አጥፋ</button>
+            ? `<button class="btn btn-outline btn-sm" onclick="setOrderStatus(${o.id}, 'new', event)">↺ አዲስ አድርግ</button>`
+            : `<button class="btn btn-primary btn-sm" onclick="setOrderStatus(${o.id}, 'done', event)">✓ ተጠናቋል</button>`}
+          <button class="btn btn-danger btn-sm" onclick="deleteOrder(${o.id}, event)">አጥፋ</button>
         </div>
       </div>
     </div>`;
-  }).join('');
+}
+
+// One card per table, combining every active (not-yet-done) order placed
+// from that table's QR code into a single view with a bulk "mark done" /
+// "delete" action, instead of one card per item added.
+function renderOrderBundleCard(bundle){
+  const orders = bundle.orders;
+  const ids = orders.map(o=>o.id);
+  const mergedItems = mergeBundleItems(orders);
+  const itemsLine = mergedItems.map(it=>`${escapeHtml(it.name)} ×${it.qty}`).join(', ');
+  const total = orders.reduce((sum,o)=>sum + Number(o.total || 0), 0);
+  const latestTime = orders.reduce((latest,o)=> !latest || new Date(o.createdAt) > new Date(latest) ? o.createdAt : latest, null);
+  const codes = orders.map(o=>o.code).filter(Boolean);
+  const orderCountLabel = orders.length === 1 ? '1 ትዕዛዝ / 1 order' : `${orders.length} ትዕዛዞች / ${orders.length} orders`;
+
+  return `<div class="order-card is-bundle">
+      <div class="order-card-head">
+        <div>
+          <div class="order-card-name">🍽️ ጠረጴዛ ${escapeHtml(bundle.tableLabel)} <span class="order-bundle-count">${orderCountLabel}</span></div>
+          ${codes.length ? `<div class="order-bundle-codes">${codes.map(c=>'#'+escapeHtml(c)).join(', ')}</div>` : ''}
+        </div>
+        <div style="text-align:right;">
+          <div class="order-status-pill">አዲስ / New</div>
+          <div class="order-card-time">${formatOrderTime(latestTime)}</div>
+        </div>
+      </div>
+      <div class="order-card-items">${itemsLine}</div>
+      <div class="order-card-foot">
+        <div class="order-card-total">${total.toLocaleString()} ብር</div>
+        <div class="order-card-actions">
+          <button class="btn btn-primary btn-sm" onclick="setOrdersStatusBulk([${ids.join(',')}], 'done', event)">✓ ሁሉንም ጨርስ / Mark all done</button>
+          <button class="btn btn-danger btn-sm" onclick="deleteOrdersBulk([${ids.join(',')}], event)">አጥፋ</button>
+        </div>
+      </div>
+    </div>`;
 }
 
 
-async function setOrderStatus(orderId, status){
+async function setOrderStatus(orderId, status, event){
+  const btn = event && event.currentTarget;
+  if(btn) setBtnLoading(btn, status === 'done' ? 'በማጠናቀቅ ላይ… / Completing…' : 'በማዘመን ላይ… / Updating…');
   try{
     const res = await fetch('/api/orders/' + orderId, {
       method: 'PATCH',
@@ -2650,21 +2909,27 @@ async function setOrderStatus(orderId, status){
     });
     if(res.status === 401){
       isAuthenticated = false;
+      if(btn) clearBtnLoading(btn);
       showToast('ፒን ትክክል አይደለም / Not authorized');
       renderAdminModal();
       return;
     }
     if(!res.ok) throw new Error('PATCH order failed: ' + res.status);
+    const ms = btn ? clearBtnLoading(btn) : 0;
+    showToast(`ተዘምኗል ✓ Updated (${fmtMs(ms)})`);
     loadOrders();
   }catch(e){
+    const ms = btn ? clearBtnLoading(btn) : 0;
     console.error('Update order error', e);
-    showToast('ማዘመን አልተሳካም / Update failed');
+    showToast(`ማዘመን አልተሳካም / Update failed (${fmtMs(ms)})`);
   }
 }
 window.setOrderStatus = setOrderStatus;
 
-async function deleteOrder(orderId){
+async function deleteOrder(orderId, event){
   if(!confirm('ይህን ትዕዛዝ ማጥፋት ይፈልጋሉ?')) return;
+  const btn = event && event.currentTarget;
+  if(btn) setBtnLoading(btn, 'በማጥፋት ላይ… / Deleting…');
   try{
     const res = await fetch('/api/orders/' + orderId, {
       method: 'DELETE',
@@ -2672,15 +2937,19 @@ async function deleteOrder(orderId){
     });
     if(res.status === 401){
       isAuthenticated = false;
+      if(btn) clearBtnLoading(btn);
       showToast('ፒን ትክክል አይደለም / Not authorized');
       renderAdminModal();
       return;
     }
     if(!res.ok) throw new Error('DELETE order failed: ' + res.status);
+    const ms = btn ? clearBtnLoading(btn) : 0;
+    showToast(`ጠፍቷል ✓ Deleted (${fmtMs(ms)})`);
     loadOrders();
   }catch(e){
+    const ms = btn ? clearBtnLoading(btn) : 0;
     console.error('Delete order error', e);
-    showToast('ማጥፋት አልተሳካም / Delete failed');
+    showToast(`ማጥፋት አልተሳካም / Delete failed (${fmtMs(ms)})`);
   }
 }
 window.deleteOrder = deleteOrder;
