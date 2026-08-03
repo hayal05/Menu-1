@@ -158,6 +158,17 @@
     overflow:hidden;
   }
   .item-icon img{ width:100%; height:100%; object-fit:cover; border-radius:50%; }
+  /* Item cards with an uploaded photo get a bigger square picture that fills
+     the card's height, instead of the small emoji circle. */
+  .item-card.has-photo{ align-items:stretch; }
+  .item-card.has-photo .item-icon{
+    width:96px; height:auto; align-self:stretch; border-radius:14px;
+    box-shadow:inset 0 0 0 2px rgba(232,103,43,0.20), 0 3px 8px rgba(61,32,21,0.12);
+  }
+  .item-card.has-photo .item-icon img{
+    border-radius:14px; cursor:zoom-in;
+  }
+  @media(min-width:520px){ .item-card.has-photo .item-icon{ width:110px; } }
   .item-body{ flex:1; min-width:0; }
   .item-top{ display:flex; justify-content:space-between; align-items:flex-start; gap:8px; }
   .item-name{ font-weight:700; font-size:15.5px; line-height:1.3; }
@@ -598,7 +609,7 @@
     <path class="cup-outline" d="M4 10h13v5.5A4.5 4.5 0 0 1 12.5 20h-4A4.5 4.5 0 0 1 4 15.5V10z"/>
     <path class="cup-outline" d="M17 11.5h1.2a2.3 2.3 0 0 1 0 4.6H17"/>
   </svg>
-  <span>Loading menu...</span>
+  <span>ምናሌ በመጫን ላይ... / Loading menu...</span>
 </div>
 <script>
   // If a logo was cached from a previous visit, swap the default cup icon
@@ -898,12 +909,13 @@ function renderMenu(){
 
   grid.innerHTML = items.map(it=>{
     const unavailCls = it.available === false ? 'is-unavailable' : '';
+    const photoCls = it.image ? 'has-photo' : '';
     const badge = it.available === false ? `<span class="unavailable-badge">አልቀረም / Unavailable</span>` : '';
     const nameEn = it.nameEn ? `<span class="item-name-en">${escapeHtml(it.nameEn)}</span>` : '';
     const desc = it.desc ? `<div class="item-desc">${escapeHtml(it.desc)}</div>` : '';
     const actions = it.available === false ? '' : `<div class="item-actions">${renderItemCartControl(it.id)}</div>`;
-    return `<div class="item-card ${unavailCls}">
-      <div class="item-icon">${itemIconHtml(it)}</div>
+    return `<div class="item-card ${unavailCls} ${photoCls}">
+      <div class="item-icon">${itemIconHtml(it, true)}</div>
       <div class="item-body">
         <div class="item-top">
           <div>
@@ -928,9 +940,10 @@ function escapeHtml(str){
 // Renders the contents of a `.item-icon` circle: an uploaded picture if the
 // item has one, otherwise the old emoji icon (kept for items created before
 // this feature), otherwise a default plate emoji.
-function itemIconHtml(item){
+function itemIconHtml(item, previewable){
   if(item && item.image){
-    return `<img src="${item.image}" alt="${escapeHtml(item.name||'')}">`;
+    const click = previewable ? ` onclick="event.stopPropagation(); openImageLightbox('${item.image.replace(/'/g,"\\'")}')" title="ትልቅ ለማየት ይጫኑ / Tap to view full size"` : '';
+    return `<img src="${item.image}" alt="${escapeHtml(item.name||'')}"${click}>`;
   }
   return escapeHtml((item && item.icon) || '🍽️');
 }
@@ -2053,7 +2066,7 @@ function renderAdminBrand(){
       </div>
       <div class="field-row">
         <div class="field-group">
-          <label class="field-label">የድርጅትዎ ቀለም / Brand color</label>
+          <label class="field-label">የምርት ቀለም / Brand color</label>
           <div style="display:flex; align-items:center; gap:10px; margin-top:4px; flex-wrap:wrap;">
             <input type="color" id="brandColorSwatch" value="${escapeHtml(b.color || DEFAULT_BRAND_COLOR)}"
               oninput="document.getElementById('brandColorHex').value = this.value; updateBrandInfo('color', this.value);"
@@ -2063,10 +2076,10 @@ function renderAdminBrand(){
               oninput="if(isValidHexColor(this.value)){ document.getElementById('brandColorSwatch').value = this.value; updateBrandInfo('color', this.value); }">
             <button type="button" class="btn btn-outline btn-sm" onclick="document.getElementById('brandColorSwatch').value='${DEFAULT_BRAND_COLOR}'; document.getElementById('brandColorHex').value='${DEFAULT_BRAND_COLOR}'; updateBrandInfo('color', '${DEFAULT_BRAND_COLOR}');">↺ ነባሪ / Reset</button>
           </div>
-          <div class="empty-admin-hint" style="text-align:left; padding:6px 0 0;">the layout and design stay the same, only the color changes.</div>
+          <div class="empty-admin-hint" style="text-align:left; padding:6px 0 0;">በአዝራሮች፣ ራስጌ እና ድምቀቶች ላይ ጥቅም ላይ ይውላል / Used for buttons, header, and highlights throughout the app — the layout and design stay the same, only the color changes.</div>
         </div>
       </div>
-      <div class="empty-admin-hint" style="text-align:left; padding:6px 0 0;">This shows in the header, footer, and browser tab.</div>
+      <div class="empty-admin-hint" style="text-align:left; padding:6px 0 0;">ይህ በራስጌ፣ በግርጌ እና በአሳሽ ትር ላይ ይታያል / This shows in the header, footer, and browser tab.</div>
       <button type="button" class="btn btn-primary btn-block" style="margin-top:14px;" onclick="saveBrandInfo(event)">💾 አስቀምጥ / Save</button>
     </div>`;
 }
@@ -2901,7 +2914,7 @@ function renderSingleOrderCard(o){
   const itemsLine = (o.items || []).map(it=>`${escapeHtml(it.name)} ×${it.qty}`).join(', ');
   const isDineIn = o.orderType === 'dine_in';
   const dineInText = o.tableLabel ? `🍽️ ጠረጴዛ ${escapeHtml(o.tableLabel)}` : '🍽️ እዚሁ';
-  const typeBadge = `<span class="order-type-badge ${isDineIn ? 'dine-in' : 'takeaway'}">${isDineIn ? dineInText : '🥡 ይዞ ወደ ውጪ'}</span>`;
+  const typeBadge = `<span class="order-type-badge ${isDineIn ? 'dine-in' : 'takeaway'}">${isDineIn ? dineInText : '🥡 ወደ ውጭ'}</span>`;
   return `<div class="order-card ${doneCls}">
       <div class="order-card-head">
         <div>
