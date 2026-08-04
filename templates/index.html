@@ -116,8 +116,10 @@
   .cat-nav-wrap{ position: sticky; top:0; z-index:5; background:var(--cream); padding:14px 0 6px; }
   .cat-nav-scroller{ position:relative; max-width:640px; margin:0 auto; }
   .cat-nav{
-    display:flex; gap:10px; overflow-x:auto; padding:4px 20px 10px;
-    scrollbar-width:none; scroll-behavior:smooth; -webkit-overflow-scrolling:touch;
+    display:flex; gap:10px; overflow-x:auto; overflow-y:hidden; padding:4px 20px 10px;
+    scrollbar-width:none; -webkit-overflow-scrolling:touch;
+    touch-action:pan-x; overscroll-behavior-x:contain;
+    position:relative; z-index:2;
   }
   .cat-nav::-webkit-scrollbar{display:none;}
   .cat-nav-fade{
@@ -624,7 +626,7 @@
     <path class="cup-outline" d="M4 10h13v5.5A4.5 4.5 0 0 1 12.5 20h-4A4.5 4.5 0 0 1 4 15.5V10z"/>
     <path class="cup-outline" d="M17 11.5h1.2a2.3 2.3 0 0 1 0 4.6H17"/>
   </svg>
-  <span>ምናሌ በመጫን ላይ... / Loading menu...</span>
+  <span>Loading menu...</span>
 </div>
 <script>
   // If a logo was cached from a previous visit, swap the default cup icon
@@ -1950,7 +1952,7 @@ function renderAdminModal(){
         <div class="sidebar-body">
           <div class="pin-screen">
             <div class="lock-emoji">🔒</div>
-            <p>ምናሌውን ለማስተካከል የ4 አሃዝ ፒን ያስገቡ<br>Enter the 4-digit admin PIN to edit the menu</p>
+            <p>Enter the 4-digit admin PIN to edit the menu</p>
             <input type="password" inputmode="numeric" maxlength="4" class="pin-input" id="pinInput" placeholder="••••">
             <div class="pin-error" id="pinError"></div>
             <button class="btn btn-primary btn-block" onclick="checkPin()">ግባ / Enter</button>
@@ -2008,7 +2010,6 @@ function renderAdminView(){
           <span class="admin-topbar-emoji">🔐</span>
           <div>
             <div class="admin-topbar-heading">የአስተዳዳሪ ፓነል / Admin Panel</div>
-            <div class="admin-topbar-sub">SABA COFFEE</div>
           </div>
         </div>
         <button class="btn btn-sm" onclick="navGoHome()">← ውጣ / Exit</button>
