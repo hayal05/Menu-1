@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1">
 <title>Saba Coffee - ሳባ ቡና | ምግብ ዝርዝር</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Noto+Serif+Ethiopic:wght@400;600;700;800&family=Noto+Sans+Ethiopic:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Noto+Serif+Ethiopic:wght@400;600;700;800&family=Noto+Sans+Ethiopic:wght@400;500;600;700&family=Abyssinica+SIL&family=Anta&family=Playfair+Display:wght@600;700;800&family=Poppins:wght@500;600;700;800&family=Pacifico&family=Montserrat:wght@600;700;800&display=swap" rel="stylesheet">
 <style>
   :root{
     --orange:#E8672B;
@@ -30,7 +30,14 @@
     -webkit-font-smoothing:antialiased;
     min-height:100vh;
   }
-  .brand-font{font-family:'Noto Serif Ethiopic','Noto Sans Ethiopic',serif;}
+  .brand-font{font-family:var(--brand-title-font, 'Noto Serif Ethiopic','Noto Sans Ethiopic',serif);}
+
+  /* ---------- powered-by footer line ---------- */
+  .powered-by{
+    font-size:11px; letter-spacing:0.6px;
+    color:rgba(255,255,255,0.4); margin-top:14px; text-transform:uppercase;
+  }
+  .powered-by span{ font-family:'Anta',sans-serif; color:rgba(255,255,255,0.65); }
 
   /* ---------- loading spinner (coffee cup + rising steam) ---------- */
   .spinner-cup{ display:inline-block; vertical-align:middle; color:#fff; margin-right:8px; }
@@ -666,6 +673,7 @@
 <footer>
   <div class="foot-brand brand-font" id="footBrandText"></div>
   <div class="foot-sub" id="footSubText"></div>
+  <div class="powered-by">Powered by <span>Zoble Tech</span></div>
 </footer>
 
 <button class="cart-fab is-empty" id="cartFab" title="Cart / ጋሪ">
@@ -704,6 +712,20 @@ let adminPin = '';   // kept only in memory for this browser session, never stor
    a new color re-tints the existing design instead of changing its layout/texture ---- */
 const DEFAULT_BRAND_COLOR = '#E8672B';
 
+/* ---- title (brand name) font options ----
+   Each stack keeps an Ethiopic-capable fallback so Amharic characters still
+   render properly even when the chosen display font is Latin-only. ---- */
+const TITLE_FONT_OPTIONS = {
+  serif_ethiopic:  { label: 'ነባሪ / Default (Noto Serif Ethiopic)', stack: "'Noto Serif Ethiopic','Noto Sans Ethiopic',serif" },
+  sans_ethiopic:   { label: 'Noto Sans Ethiopic',                   stack: "'Noto Sans Ethiopic',sans-serif" },
+  abyssinica:      { label: 'Abyssinica SIL',                       stack: "'Abyssinica SIL','Noto Sans Ethiopic',serif" },
+  playfair:        { label: 'Playfair Display',                     stack: "'Playfair Display','Noto Sans Ethiopic',serif" },
+  poppins:         { label: 'Poppins',                               stack: "'Poppins','Noto Sans Ethiopic',sans-serif" },
+  montserrat:      { label: 'Montserrat',                            stack: "'Montserrat','Noto Sans Ethiopic',sans-serif" },
+  pacifico:        { label: 'Pacifico (script)',                     stack: "'Pacifico','Noto Sans Ethiopic',cursive" },
+  anta:            { label: 'Anta',                                  stack: "'Anta','Noto Sans Ethiopic',sans-serif" },
+};
+
 function hexToRgb(hex){
   let h = String(hex||'').replace('#','');
   if(h.length === 3) h = h.split('').map(c=>c+c).join('');
@@ -735,6 +757,11 @@ function applyBrandColor(hex){
   root.setProperty('--orange', color);
   root.setProperty('--orange-dark', shadeHex(color, -0.18));
   root.setProperty('--orange-light', shadeHex(color, 0.22));
+}
+
+function applyTitleFont(key){
+  const opt = TITLE_FONT_OPTIONS[key] || TITLE_FONT_OPTIONS.serif_ethiopic;
+  document.documentElement.style.setProperty('--brand-title-font', opt.stack);
 }
 
 /* ---- new-order push notification (admin mode only) ---- */
@@ -954,6 +981,7 @@ function renderBrand(){
   const footerText = (state.brand && state.brand.footerText) || 'SABA COFFEE · ADDIS ABABA';
   const profileImage = state.brand && state.brand.profileImage;
   applyBrandColor(state.brand && state.brand.color);
+  applyTitleFont(state.brand && state.brand.titleFont);
   document.getElementById('brandNameText').textContent = name;
   document.getElementById('brandTypeText').textContent = type;
   document.getElementById('footBrandText').textContent = name;
@@ -2056,6 +2084,15 @@ function renderAdminBrand(){
         <div class="field-group">
           <label class="field-label">ዓይነት / Type</label>
           <input type="text" value="${escapeHtml(b.type||'')}" onchange="updateBrandInfo('type', this.value)" placeholder="e.g. Restaurant & Coffee House">
+        </div>
+      </div>
+      <div class="field-row">
+        <div class="field-group">
+          <label class="field-label">የርዕስ ቅርጸ ቁምፊ / Title font</label>
+          <select onchange="updateBrandInfo('titleFont', this.value)" style="font-family:${(TITLE_FONT_OPTIONS[b.titleFont]||TITLE_FONT_OPTIONS.serif_ethiopic).stack};">
+            ${Object.keys(TITLE_FONT_OPTIONS).map(key => `<option value="${key}" ${((b.titleFont||'serif_ethiopic')===key) ? 'selected' : ''} style="font-family:${TITLE_FONT_OPTIONS[key].stack};">${escapeHtml(TITLE_FONT_OPTIONS[key].label)}</option>`).join('')}
+          </select>
+          <div class="empty-admin-hint" style="text-align:left; padding:6px 0 0;">የምግብ ቤቱን ስም (ራስጌ) ቅርጸ ቁምፊ ይቀይራል / Changes the font used for the restaurant name in the header.</div>
         </div>
       </div>
       <div class="field-row">
